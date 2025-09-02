@@ -1,0 +1,135 @@
+
+// generator y datasource
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+// --- Enums ---
+enum Role {
+  operator
+  labManager
+  admin
+}
+
+// --- Usuario / Perfil ---
+model UserMetadata {
+  id        String   @id @default(uuid())
+  nombre    String
+  apellido  String
+  tipo      Role     @default(operator)
+  email     String   @unique
+  password  String   // <-- guardar hash (bcrypt)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tipo])
+  @@index([createdAt])
+}
+
+// --- Sensores / Actuadores / Proyectos ---
+
+model Sensor {
+  sensor_id        Int               @id @default(autoincrement())
+  nombre           String
+  descripcion      String?
+  unidad_de_medida String
+  valor_max        Decimal?          @db.Decimal(18,6)
+  valor_min        Decimal?          @db.Decimal(18,6)
+  estado           Boolean           @default(true)
+  fuente_datos     String?
+
+  proyectos        ProyectoSensor[]
+  mediciones       MedicionSensor[]
+
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([nombre])
+}
+
+model Actuador {
+  actuator_id      Int                @id @default(autoincrement())
+  nombre           String
+  descripcion      String?
+  unidad_de_medida String
+  valor_max        Decimal?           @db.Decimal(18,6)
+  valor_min        Decimal?           @db.Decimal(18,6)
+  estado           Boolean            @default(true)
+  fuente_datos     String?
+
+  proyectos        ProyectoActuador[]
+  registros        RegistroActuador[]
+
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@index([nombre])
+}
+
+model Proyecto {
+  project_id  Int                @id @default(autoincrement())
+  nombre      String
+  descripcion String?
+
+  sensores    ProyectoSensor[]
+  actuadores  ProyectoActuador[]
+
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([nombre])
+}
+
+// --- Tablas pivote (N:M) ---
+
+model ProyectoSensor {
+  proyecto    Proyecto @relation(fields: [proyectoId], references: [project_id], onDelete: Cascade, onUpdate: Cascade)
+  proyectoId  Int
+
+  sensor      Sensor   @relation(fields: [sensorId], references: [sensor_id], onDelete: Cascade, onUpdate: Cascade)
+  sensorId    Int
+
+  @@id([proyectoId, sensorId])
+  @@index([sensorId])
+}
+
+model ProyectoActuador {
+  proyecto    Proyecto @relation(fields: [proyectoId], references: [project_id], onDelete: Cascade, onUpdate: Cascade)
+  proyectoId  Int
+
+  actuador    Actuador @relation(fields: [actuadorId], references: [actuator_id], onDelete: Cascade, onUpdate: Cascade)
+  actuadorId  Int
+
+  @@id([proyectoId, actuadorId])
+  @@index([actuadorId])
+}
+
+// --- Lecturas / Registros ---
+
+model MedicionSensor {
+  id        Int      @id @default(autoincrement())
+  sensor    Sensor   @relation(fields: [sensorId], references: [sensor_id], onDelete: Cascade, onUpdate: Cascade)
+  sensorId  Int
+  valor     Decimal  @db.Decimal(18,6)
+  timestamp DateTime @default(now())
+
+  @@index([sensorId])
+  @@index([timestamp])
+}
+
+model RegistroActuador {
+  id         Int      @id @default(autoincrement())
+  actuador   Actuador @relation(fields: [actuadorId], references: [actuator_id], onDelete: Cascade, onUpdate: Cascade)
+  actuadorId Int
+  estado     String   // ej: "ON" | "OFF" | "AUTO" | "MANUAL" (si querés, lo pasamos a enum)
+  timestamp  DateTime @default(now())
+
+  @@index([actuadorId])
+  @@index([timestamp])
+}
