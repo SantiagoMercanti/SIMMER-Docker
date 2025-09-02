@@ -17,59 +17,72 @@ export default function SensorsList({
   items: Sensor[];
   role: Role;
 }) {
+  const canEdit = role !== 'operator';
+
   if (!items?.length) {
-    return <EmptyState label="No hay sensores." />;
+    return (
+      <>
+        <EmptyState label="No hay sensores." />
+        {canEdit && (
+          <div className="mt-6 text-center">
+            <button
+              onClick={() => console.log('Crear sensor')}
+              className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-sm"
+            >
+              +
+            </button>
+          </div>
+        )}
+      </>
+    );
   }
 
   return (
-    <ul className="space-y-2">
-      {items.map((s) => (
-        <li
-          key={s.sensor_id}
-          className="flex items-start justify-between rounded-lg border px-3 py-2"
-        >
-          <div>
-            <p className="font-medium">{s.nombre}</p>
-            <p className="text-xs text-gray-500">
-              {s.descripcion ?? 'Sin descripción'} · ud: {s.unidad_de_medida} ·{' '}
-              {s.estado ? 'Activo' : 'Inactivo'}
-            </p>
-          </div>
+    <>
+      <ul className="space-y-4">
+        {items.map((s) => (
+          <li
+            key={s.sensor_id}
+            className="flex items-center justify-between p-4 bg-gray-100 rounded-md"
+          >
+            <button
+              className="text-left text-gray-800 font-bold hover:text-gray-500"
+              onClick={() => console.log('Ver detalle sensor', s.sensor_id)}
+            >
+              {s.nombre}
+            </button>
 
-          {role !== 'operator' && (
-            <Actions
-              onEdit={() => console.log('Editar sensor', s.sensor_id)}
-              onDelete={() => console.log('Eliminar sensor', s.sensor_id)}
-            />
-          )}
-        </li>
-      ))}
-    </ul>
-  );
-}
+            {canEdit && (
+              <div className="flex space-x-2">
+                <button
+                  className="text-blue-500 hover:text-blue-700"
+                  onClick={() => console.log('Editar sensor', s.sensor_id)}
+                >
+                  Editar
+                </button>
+                <button
+                  className="text-red-500 hover:text-red-700"
+                  onClick={() => console.log('Eliminar sensor', s.sensor_id)}
+                >
+                  Eliminar
+                </button>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
 
-function Actions({
-  onEdit,
-  onDelete,
-}: {
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <div className="flex gap-2">
-      <button
-        className="rounded-md border px-2 py-1 text-xs hover:bg-gray-50"
-        onClick={onEdit}
-      >
-        Editar
-      </button>
-      <button
-        className="rounded-md border px-2 py-1 text-xs text-red-600 hover:bg-red-50"
-        onClick={onDelete}
-      >
-        Eliminar
-      </button>
-    </div>
+      {canEdit && (
+        <div className="mt-6 text-center">
+          <button
+            onClick={() => console.log('Crear sensor')}
+            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 text-sm"
+          >
+            +
+          </button>
+        </div>
+      )}
+    </>
   );
 }
 
