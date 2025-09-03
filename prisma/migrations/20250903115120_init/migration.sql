@@ -21,8 +21,8 @@ CREATE TABLE `Sensor` (
     `nombre` VARCHAR(191) NOT NULL,
     `descripcion` VARCHAR(191) NULL,
     `unidad_de_medida` VARCHAR(191) NOT NULL,
-    `valor_max` DECIMAL(18, 6) NULL,
-    `valor_min` DECIMAL(18, 6) NULL,
+    `valor_max` DOUBLE NOT NULL,
+    `valor_min` DOUBLE NOT NULL,
     `estado` BOOLEAN NOT NULL DEFAULT true,
     `fuente_datos` VARCHAR(191) NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -38,8 +38,8 @@ CREATE TABLE `Actuador` (
     `nombre` VARCHAR(191) NOT NULL,
     `descripcion` VARCHAR(191) NULL,
     `unidad_de_medida` VARCHAR(191) NOT NULL,
-    `valor_max` DECIMAL(18, 6) NULL,
-    `valor_min` DECIMAL(18, 6) NULL,
+    `valor_max` DOUBLE NOT NULL,
+    `valor_min` DOUBLE NOT NULL,
     `estado` BOOLEAN NOT NULL DEFAULT true,
     `fuente_datos` VARCHAR(191) NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -83,7 +83,7 @@ CREATE TABLE `ProyectoActuador` (
 CREATE TABLE `MedicionSensor` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `sensorId` INTEGER NOT NULL,
-    `valor` DECIMAL(18, 6) NOT NULL,
+    `valor` DOUBLE NOT NULL,
     `timestamp` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
     INDEX `MedicionSensor_sensorId_idx`(`sensorId`),
@@ -95,7 +95,7 @@ CREATE TABLE `MedicionSensor` (
 CREATE TABLE `RegistroActuador` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `actuadorId` INTEGER NOT NULL,
-    `estado` VARCHAR(191) NOT NULL,
+    `valor` DOUBLE NOT NULL,
     `timestamp` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
     INDEX `RegistroActuador_actuadorId_idx`(`actuadorId`),

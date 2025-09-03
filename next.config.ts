@@ -5,3 +5,13 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+
+// /** @type {import('next').NextConfig} */
+// const nextConfig = {
+//   experimental: {
+//     serverActions: true, // ✅ solo si realmente lo usás
+//   },
+// };
+
+// module.exports = nextConfig;
+

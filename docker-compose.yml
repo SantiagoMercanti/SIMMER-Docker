@@ -1,0 +1,18 @@
+version: "3.9"
+services:
+  db_simmer_despliegue:
+    image: mysql:8.0
+    container_name: db_simmer_despliegue
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: simmer_db_despliegue
+      MYSQL_USER: simmer
+      MYSQL_PASSWORD: simmer_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data_simmer_db_despliegue:/var/lib/mysql
+
+volumes:
+  db_data_simmer_db_despliegue:

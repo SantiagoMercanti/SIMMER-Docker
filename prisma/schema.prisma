@@ -24,7 +24,7 @@ model UserMetadata {
   apellido  String
   tipo      Role     @default(operator)
   email     String   @unique
-  password  String   // <-- guardar hash (bcrypt)
+  password  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -39,8 +39,8 @@ model Sensor {
   nombre           String
   descripcion      String?
   unidad_de_medida String
-  valor_max        Decimal?          @db.Decimal(18,6)
-  valor_min        Decimal?          @db.Decimal(18,6)
+  valor_max        Float
+  valor_min        Float
   estado           Boolean           @default(true)
   fuente_datos     String?
 
@@ -58,8 +58,8 @@ model Actuador {
   nombre           String
   descripcion      String?
   unidad_de_medida String
-  valor_max        Decimal?           @db.Decimal(18,6)
-  valor_min        Decimal?           @db.Decimal(18,6)
+  valor_max        Float
+  valor_min        Float
   estado           Boolean            @default(true)
   fuente_datos     String?
 
@@ -116,7 +116,7 @@ model MedicionSensor {
   id        Int      @id @default(autoincrement())
   sensor    Sensor   @relation(fields: [sensorId], references: [sensor_id], onDelete: Cascade, onUpdate: Cascade)
   sensorId  Int
-  valor     Decimal  @db.Decimal(18,6)
+  valor     Float
   timestamp DateTime @default(now())
 
   @@index([sensorId])
@@ -127,7 +127,7 @@ model RegistroActuador {
   id         Int      @id @default(autoincrement())
   actuador   Actuador @relation(fields: [actuadorId], references: [actuator_id], onDelete: Cascade, onUpdate: Cascade)
   actuadorId Int
-  estado     String   // ej: "ON" | "OFF" | "AUTO" | "MANUAL" (si querés, lo pasamos a enum)
+  valor      Float
   timestamp  DateTime @default(now())
 
   @@index([actuadorId])
