@@ -1,39 +1,17 @@
-// import type { NextConfig } from "next";
-
-// const nextConfig: NextConfig = {
-//   /* config options here */
-// };
-
-// export default nextConfig;
-
-
-
-//Comento esta para no ejecutar typescript y poder testear despliegue
-// import type { NextConfig } from "next";
-
-// const nextConfig: NextConfig = {
-//   basePath: "/a03",
-//   output: "standalone",
-//   // Si servís estáticos detrás de un reverse proxy y ves rutas rotas,
-//   // podés probar también:
-//   // assetPrefix: "/a03",
-// };
-
-// export default nextConfig;
-
 import type { NextConfig } from "next";
 
+// Leé el base path desde el entorno:
+// - DEV en Docker: BASE_PATH no seteado (o vacío) => sin subpath
+// - PROD: BASE_PATH="/a03"
+const basePath = (process.env.BASE_PATH || "").trim();
+
 const nextConfig: NextConfig = {
-  basePath: "/a03",
+  basePath: basePath || undefined,
+  assetPrefix: basePath ? `${basePath}/` : undefined,
   output: "standalone",
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+
+//  typescript: { ignoreBuildErrors: process.env.SKIP_TYPECHECK === "1" },
+//  eslint:     { ignoreDuringBuilds: process.env.SKIP_LINT === "1" },
 };
 
 export default nextConfig;
-
-

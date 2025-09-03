@@ -1,32 +1,29 @@
-# ---- Build stage ----
-FROM node:20-bookworm-slim AS builder
+# ---------- base ----------
+FROM node:20-alpine AS base
 WORKDIR /app
 
-# Instalar deps (usa lockfile si lo tenés)
+# ---------- deps ----------
+FROM base AS deps
 COPY package*.json ./
 RUN npm ci
 
-# Prisma: generar cliente con schema disponible
+# ---------- dev ----------
+FROM base AS dev
+ENV NODE_ENV=development
+COPY --from=deps /app/node_modules /app/node_modules
 COPY prisma ./prisma
-RUN npx prisma generate
-
-# Copiar el resto del código y compilar Next
 COPY . .
-# Importante: en next.config.ts tenés basePath="/a03" y output="standalone"
-RUN npm run build
-
-# ---- Runtime stage ----
-FROM node:20-bookworm-slim AS runner
-WORKDIR /app
-ENV NODE_ENV=production
-
-# Copiamos lo mínimo para correr en modo "standalone"
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-
+RUN npx prisma generate
 EXPOSE 3000
+# El comando real lo define docker-compose.dev.yml
 
-# Aplicar migraciones y arrancar
-CMD ["bash", "-lc", "npx prisma migrate deploy && node server.js"]
+# ---------- prod ----------
+FROM base AS prod
+ENV NODE_ENV=production
+COPY --from=deps /app/node_modules /app/node_modules
+COPY prisma ./prisma
+COPY . .
+RUN npx prisma generate
+# RUN npm run build     # si usás build de Next para prod
+EXPOSE 3000
+CMD sh -c "npx prisma migrate deploy && npm run start"
