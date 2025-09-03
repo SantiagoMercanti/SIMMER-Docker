@@ -39,7 +39,7 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      const res = await fetch('/api/public/register', {
+      const res = await fetch('api/public/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -56,7 +56,7 @@ export default function RegisterPage() {
         setErrorMsg(data?.message || 'Error al registrar el usuario');
       } else {
         // Después podemos loguear directo o redirigir a login (como querías)
-        router.push('/login');
+        router.push('login');
       }
     } catch (err) {
       console.error('Error al registrar el usuario: ', err);
