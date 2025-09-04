@@ -68,3 +68,4 @@
 //     return NextResponse.json({ message: 'Error al crear sensor' }, { status: 500 });
 //   }
 // }
+export {};

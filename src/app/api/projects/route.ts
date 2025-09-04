@@ -50,3 +50,4 @@
 //     return NextResponse.json({ message: 'Error al crear proyecto' }, { status: 500 });
 //   }
 // }
+export {};

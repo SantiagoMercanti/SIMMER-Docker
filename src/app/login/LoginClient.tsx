@@ -20,7 +20,7 @@ export default function LoginClient() {
     setLoading(true);
 
     try {
-      const res = await fetch('api/public/login', {
+      const res = await fetch('/api/public/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -31,7 +31,7 @@ export default function LoginClient() {
       if (!res.ok) {
         setErrorMsg(data?.message || 'Usuario o contraseña incorrectos');
       } else {
-        router.push('dashboard');
+        router.push('/dashboard');
       }
     } catch (err) {
       console.error('Error al iniciar sesión: ', err);

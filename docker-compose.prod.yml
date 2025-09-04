@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   db:
     image: mysql:8.0
@@ -19,19 +17,26 @@ services:
       retries: 30
 
   app:
-    image: simmer-app:latest           # o la imagen que construyas/taguees
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prod
+      args:
+        BASE_PATH: "/a03"
+        NEXT_PUBLIC_BASE_PATH: "/a03"
+    image: simmer-app:prod
     container_name: simmer_app
     restart: always
     env_file:
-      - .env.production                # ver más abajo
+      - .env.production
     environment:
-      BASE_PATH: "/a03"                # << clave para servir en /a03
+      NODE_ENV: "production"
     ports:
-      - "3000:3000"                    # el reverse proxy mapeará /a03→:3000/a03
+      - "3000:3000"
     depends_on:
       db:
         condition: service_healthy
-    command: sh -c "npx prisma migrate deploy && npm run start"
+    # ❗️Sin 'command': se usa el CMD del Dockerfile (migrate deploy + node server.js)
 
 volumes:
   db_data:

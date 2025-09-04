@@ -66,3 +66,4 @@
 //     return NextResponse.json({ message: 'Error al crear actuador' }, { status: 500 });
 //   }
 // }
+export {};
