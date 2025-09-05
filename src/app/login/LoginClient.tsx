@@ -20,7 +20,8 @@ export default function LoginClient() {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/public/login', {
+      const base = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+      const res = await fetch(`${base}/api/public/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
