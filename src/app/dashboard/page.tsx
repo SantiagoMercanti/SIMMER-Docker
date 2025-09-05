@@ -1,74 +1,88 @@
-// // Si en algún momento el proyecto pasa a Edge Runtime, jsonwebtoken no funciona allí; habría que fijar Node.js explícitamente:
-// // export const runtime = 'nodejs';
+'use client';
 
-// import { prisma } from '@/lib/prisma';
-// import { cookies } from 'next/headers';
-// import jwt from 'jsonwebtoken';
-// import ProjectsList from '@/app/components/ProjectsList';
-// import SensorsList from '@/app/components/SensorsList';
-// import ActuatorsList from '@/app/components/ActuatorsList';
-
-// type Role = 'operator' | 'labManager' | 'admin';
-
-// async function getRoleFromToken(): Promise<Role> {
-//   const cookieStore = await cookies();
-//   const token = cookieStore.get('token')?.value;
-
-//   if (!token) return 'operator';
-//   try {
-//     const payload = jwt.verify(
-//       token,
-//       process.env.JWT_SECRET || 'dev_secret_change_me'
-//     ) as { role?: Role };
-//     return payload.role ?? 'operator';
-//   } catch {
-//     return 'operator';
-//   }
-// }
-
-// export default async function DashboardPage() {
-//   const role = await getRoleFromToken();
-
-//   const [proyectos, sensores, actuadores] = await Promise.all([
-//     prisma.proyecto.findMany({ orderBy: { project_id: 'asc' } }),
-//     prisma.sensor.findMany({ orderBy: { sensor_id: 'asc' } }),
-//     prisma.actuador.findMany({ orderBy: { actuator_id: 'asc' } }),
-//   ]);
-
-//   return (
-//     <div className="min-h-screen bg-gray-100 p-6">
-//       <div className="max-w-7xl mx-auto">
-//         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-//           {/* Proyectos */}
-//           <div className="bg-white rounded-lg shadow-md p-6">
-//             <h2 className="text-2xl font-bold text-gray-800 border-b-2 border-blue-500 pb-2 mb-6">
-//               Proyectos
-//             </h2>
-//             <ProjectsList items={proyectos} role={role} />
-//           </div>
-
-//           {/* Sensores */}
-//           <div className="bg-white rounded-lg shadow-md p-6">
-//             <h2 className="text-2xl font-bold text-gray-800 border-b-2 border-blue-500 pb-2 mb-6">
-//               Sensores
-//             </h2>
-//             <SensorsList items={sensores} role={role} />
-//           </div>
-
-//           {/* Actuadores */}
-//           <div className="bg-white rounded-lg shadow-md p-6">
-//             <h2 className="text-2xl font-bold text-gray-800 border-b-2 border-blue-500 pb-2 mb-6">
-//               Actuadores
-//             </h2>
-//             <ActuatorsList items={actuadores} role={role} />
-//           </div>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
+import { useState } from 'react';
+import ElementList from '../components/ElementList';
+import SensorActuatorForm from '../components/SensorActuatorForm';
 
 export default function DashboardPage() {
-  return <h1 className="text-2xl font-bold">Dashboard</h1>;
-}
+  const [openSensor, setOpenSensor] = useState(false);
+  const [openActuador, setOpenActuador] = useState(false);
 
+  const proyectos = [
+    { id: 'p1', name: 'BioReactor A' },
+    { id: 'p2', name: 'Fermentor 200L' },
+  ];
+  const sensores = [
+    { id: 's1', name: 'Sensor de pH' },
+    { id: 's2', name: 'Temp. Reactor' },
+  ];
+  const actuadores = [
+    { id: 'a1', name: 'Válvula PID' },
+    { id: 'a2', name: 'Agitador' },
+  ];
+
+  return (
+    <div className="min-h-screen bg-gray-100 px-4 py-8">
+      <div className="mx-auto max-w-7xl">
+        <header className="mb-6">
+          <h1 className="text-3xl font-bold text-blue-600 tracking-wide">Dashboard</h1>
+          <p className="text-gray-600">Administrá proyectos, sensores y actuadores.</p>
+        </header>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <ElementList
+            title="Proyectos"
+            items={proyectos}
+            addLabel="Nuevo proyecto"
+            onAdd={() => console.log('Abrir formulario de proyecto')}
+            onEdit={(id) => console.log('Editar proyecto', id)}
+            onDelete={(id) => console.log('Eliminar proyecto', id)}
+          />
+
+          <ElementList
+            title="Sensores"
+            items={sensores}
+            addLabel="Nuevo sensor"
+            onAdd={() => setOpenSensor(true)}
+            onEdit={(id) => console.log('Editar sensor', id)}
+            onDelete={(id) => console.log('Eliminar sensor', id)}
+          />
+
+          <ElementList
+            title="Actuadores"
+            items={actuadores}
+            addLabel="Nuevo actuador"
+            onAdd={() => setOpenActuador(true)}
+            onEdit={(id) => console.log('Editar actuador', id)}
+            onDelete={(id) => console.log('Eliminar actuador', id)}
+          />
+        </div>
+      </div>
+
+      {/* Form como MODAL */}
+      <SensorActuatorForm
+        asModal
+        open={openSensor}
+        onRequestClose={() => setOpenSensor(false)}
+        tipo="sensor"
+        onCancel={() => setOpenSensor(false)}
+        onSubmit={(vals) => {
+          console.log('SUBMIT SENSOR', vals);
+          setOpenSensor(false);
+        }}
+      />
+
+      <SensorActuatorForm
+        asModal
+        open={openActuador}
+        onRequestClose={() => setOpenActuador(false)}
+        tipo="actuador"
+        onCancel={() => setOpenActuador(false)}
+        onSubmit={(vals) => {
+          console.log('SUBMIT ACTUADOR', vals);
+          setOpenActuador(false);
+        }}
+      />
+    </div>
+  );
+}
