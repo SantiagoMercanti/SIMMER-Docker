@@ -10,8 +10,13 @@ export default function DashboardPage() {
   const [openSensor, setOpenSensor] = useState(false);
   const [openActuador, setOpenActuador] = useState(false);
 
+  // edición
+  const [editingSensorId, setEditingSensorId] = useState<string | null>(null);
+  const [editingActuatorId, setEditingActuatorId] = useState<string | null>(null);
+  const [sensorInitial, setSensorInitial] = useState<Partial<SensorActuatorFormValues> | undefined>(undefined);
+  const [actuatorInitial, setActuatorInitial] = useState<Partial<SensorActuatorFormValues> | undefined>(undefined);
+
   const [proyectos] = useState<Item[]>([
-    // si más adelante querés, los traemos también de la DB
     { id: 'p1', name: 'BioReactor A' },
     { id: 'p2', name: 'Fermentor 200L' },
   ]);
@@ -46,9 +51,31 @@ export default function DashboardPage() {
     loadActuadores();
   }, []);
 
+  // --- Crear / Editar Sensor ---
+  const openNewSensor = () => {
+    setEditingSensorId(null);
+    setSensorInitial(undefined);
+    setOpenSensor(true);
+  };
+
+  const handleEditSensor = async (id: string) => {
+    // traemos detalle antes de abrir para que el form se inicialice con esos valores
+    const res = await fetch(`/api/sensors/${id}`, { cache: 'no-store' });
+    if (!res.ok) {
+      alert('No se pudo cargar el sensor');
+      return;
+    }
+    const d = await res.json();
+    setSensorInitial(d);
+    setEditingSensorId(id);
+    setOpenSensor(true);
+  };
+
   const submitSensor = async (vals: SensorActuatorFormValues) => {
-    const res = await fetch('/api/sensors', {
-      method: 'POST',
+    const url = editingSensorId ? `/api/sensors/${editingSensorId}` : '/api/sensors';
+    const method = editingSensorId ? 'PATCH' : 'POST';
+    const res = await fetch(url, {
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(vals),
     });
@@ -58,12 +85,46 @@ export default function DashboardPage() {
       return;
     }
     setOpenSensor(false);
+    setEditingSensorId(null);
+    setSensorInitial(undefined);
     await loadSensores();
   };
 
+  const handleDeleteSensor = async (id: string) => {
+    if (!confirm('¿Eliminar este sensor?')) return;
+    const res = await fetch(`/api/sensors/${id}`, { method: 'DELETE' });
+    if (!res.ok && res.status !== 204) {
+      const j = await res.json().catch(() => ({}));
+      alert(j?.error ?? 'No se pudo eliminar');
+      return;
+    }
+    await loadSensores();
+  };
+
+  // --- Crear / Editar Actuador ---
+  const openNewActuator = () => {
+    setEditingActuatorId(null);
+    setActuatorInitial(undefined);
+    setOpenActuador(true);
+  };
+
+  const handleEditActuator = async (id: string) => {
+    const res = await fetch(`/api/actuators/${id}`, { cache: 'no-store' });
+    if (!res.ok) {
+      alert('No se pudo cargar el actuador');
+      return;
+    }
+    const d = await res.json();
+    setActuatorInitial(d);
+    setEditingActuatorId(id);
+    setOpenActuador(true);
+  };
+
   const submitActuador = async (vals: SensorActuatorFormValues) => {
-    const res = await fetch('/api/actuators', {
-      method: 'POST',
+    const url = editingActuatorId ? `/api/actuators/${editingActuatorId}` : '/api/actuators';
+    const method = editingActuatorId ? 'PATCH' : 'POST';
+    const res = await fetch(url, {
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(vals),
     });
@@ -73,6 +134,19 @@ export default function DashboardPage() {
       return;
     }
     setOpenActuador(false);
+    setEditingActuatorId(null);
+    setActuatorInitial(undefined);
+    await loadActuadores();
+  };
+
+  const handleDeleteActuator = async (id: string) => {
+    if (!confirm('¿Eliminar este actuador?')) return;
+    const res = await fetch(`/api/actuators/${id}`, { method: 'DELETE' });
+    if (!res.ok && res.status !== 204) {
+      const j = await res.json().catch(() => ({}));
+      alert(j?.error ?? 'No se pudo eliminar');
+      return;
+    }
     await loadActuadores();
   };
 
@@ -96,35 +170,41 @@ export default function DashboardPage() {
             title="Sensores"
             items={sensores}
             addLabel={loading.sens ? 'Cargando...' : 'Nuevo sensor'}
-            onAdd={() => setOpenSensor(true)}
+            onAdd={openNewSensor}
+            onEdit={handleEditSensor}
+            onDelete={handleDeleteSensor}
           />
 
           <ElementList
             title="Actuadores"
             items={actuadores}
             addLabel={loading.act ? 'Cargando...' : 'Nuevo actuador'}
-            onAdd={() => setOpenActuador(true)}
+            onAdd={openNewActuator}
+            onEdit={handleEditActuator}
+            onDelete={handleDeleteActuator}
           />
         </div>
       </div>
 
-      {/* MODAL: Nuevo Sensor */}
+      {/* MODAL: Sensor */}
       <SensorActuatorForm
         asModal
         open={openSensor}
-        onRequestClose={() => setOpenSensor(false)}
+        onRequestClose={() => { setOpenSensor(false); setEditingSensorId(null); setSensorInitial(undefined); }}
         tipo="sensor"
-        onCancel={() => setOpenSensor(false)}
+        initialValues={editingSensorId ? sensorInitial : undefined}
+        onCancel={() => { setOpenSensor(false); setEditingSensorId(null); setSensorInitial(undefined); }}
         onSubmit={submitSensor}
       />
 
-      {/* MODAL: Nuevo Actuador */}
+      {/* MODAL: Actuador */}
       <SensorActuatorForm
         asModal
         open={openActuador}
-        onRequestClose={() => setOpenActuador(false)}
+        onRequestClose={() => { setOpenActuador(false); setEditingActuatorId(null); setActuatorInitial(undefined); }}
         tipo="actuador"
-        onCancel={() => setOpenActuador(false)}
+        initialValues={editingActuatorId ? actuatorInitial : undefined}
+        onCancel={() => { setOpenActuador(false); setEditingActuatorId(null); setActuatorInitial(undefined); }}
         onSubmit={submitActuador}
       />
     </div>

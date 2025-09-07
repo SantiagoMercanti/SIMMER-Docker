@@ -46,6 +46,39 @@ export default function SensorActuatorForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const panelRef = useRef<HTMLDivElement>(null);
 
+  // --- Desestructuración para deps del efecto (arreglo recomendado) ---
+  const {
+    nombre: ivNombre = '',
+    descripcion: ivDescripcion = '',
+    unidadMedida: ivUnidadMedida = '',
+    valorMin: ivValorMin = '',
+    valorMax: ivValorMax = '',
+    fuenteDatos: ivFuenteDatos = '',
+  } = initialValues ?? {};
+
+  // Reset: cada vez que se abre el modal, o si cambian initialValues mientras está abierto
+  useEffect(() => {
+    if (!asModal || !open) return;
+    setValues({
+      nombre: ivNombre,
+      descripcion: ivDescripcion,
+      unidadMedida: ivUnidadMedida,
+      valorMin: ivValorMin,
+      valorMax: ivValorMax,
+      fuenteDatos: ivFuenteDatos,
+    });
+    setErrors({});
+  }, [
+    open,
+    asModal,
+    ivNombre,
+    ivDescripcion,
+    ivUnidadMedida,
+    ivValorMin,
+    ivValorMax,
+    ivFuenteDatos,
+  ]);
+
   // Accesibilidad/UX en modo modal: cerrar con Escape y bloquear scroll del fondo
   useEffect(() => {
     if (!asModal || !open) return;
@@ -71,9 +104,9 @@ export default function SensorActuatorForm({
 
   const handleChange =
     (field: keyof SensorActuatorFormValues) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setValues((v) => ({ ...v, [field]: e.target.value }));
-    };
+      (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        setValues((v) => ({ ...v, [field]: e.target.value }));
+      };
 
   const validate = () => {
     const next: Record<string, string> = {};
@@ -82,7 +115,7 @@ export default function SensorActuatorForm({
     if (!values.unidadMedida.trim()) next.unidadMedida = 'La unidad de medida es obligatoria.';
     if (!values.fuenteDatos.trim()) next.fuenteDatos = 'La fuente de datos es obligatoria.';
 
-    // Ahora son obligatorios:
+    // Obligatorios:
     if (values.valorMin.trim() === '') next.valorMin = 'El mínimo es obligatorio.';
     if (values.valorMax.trim() === '') next.valorMax = 'El máximo es obligatorio.';
 
