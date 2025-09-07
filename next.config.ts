@@ -7,9 +7,7 @@ const basePath = (process.env.BASE_PATH || "").trim();
 
 const nextConfig: NextConfig = {
   basePath: basePath || undefined,
-  assetPrefix: basePath ? `${basePath}/` : undefined,
   output: "standalone",
-
 //  typescript: { ignoreBuildErrors: process.env.SKIP_TYPECHECK === "1" },
 //  eslint:     { ignoreDuringBuilds: process.env.SKIP_LINT === "1" },
 };

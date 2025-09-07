@@ -3,6 +3,9 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+const BASE = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
+const api = (p: string) => `${BASE}${p}`;
+
 export default function RegisterPage() {
   const router = useRouter();
 
@@ -39,7 +42,7 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      const res = await fetch('api/public/register', {
+      const res = await fetch(api('/api/public/register'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -55,8 +58,7 @@ export default function RegisterPage() {
       if (!res.ok) {
         setErrorMsg(data?.message || 'Error al registrar el usuario');
       } else {
-        // Después podemos loguear directo o redirigir a login (como querías)
-        router.push('login');
+        router.push('/login'); // absoluto (basePath-aware)
       }
     } catch (err) {
       console.error('Error al registrar el usuario: ', err);

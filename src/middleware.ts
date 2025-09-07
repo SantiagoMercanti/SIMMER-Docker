@@ -1,73 +1,75 @@
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { jwtVerify } from 'jose';
+import { NextRequest, NextResponse } from 'next/server';
 
-// '' en dev, '/a03' en prod (sin barra final)
-const BASE = (process.env.BASE_PATH || '').replace(/\/$/, '');
+// Base path tomado del entorno (prod) o vacío (dev)
+const BASE = (process.env.NEXT_PUBLIC_BASE_PATH || process.env.BASE_PATH || '').replace(/\/$/, '');
 
-const LOGIN_PATH = '/login';
-const REGISTER_PATH = '/register';
-const DASHBOARD_PATH = '/dashboard';
+// Rutas públicas exactas y prefijos públicos
+const PUBLIC_EXACT = new Set<string>(['/login', '/register']);
+const PUBLIC_PREFIX = ['/api/public']; // 🔧 FIX: todo /api/public/* es público
 
-// helpers
-const toAbs = (p: string) => `${BASE}${p}`; // agrega basePath
-const isStatic = (p: string) =>
-  p.startsWith('/_next/') ||
-  p === '/favicon.ico' ||
-  /\.[a-zA-Z0-9]+$/.test(p);
-
-const isPublic = (p: string) =>
-  p === LOGIN_PATH ||
-  p.startsWith('/login/') ||
-  p === REGISTER_PATH ||
-  p.startsWith('/register/') ||
-  p.startsWith('/api/public');
-
-export async function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl;
-
-  // Normalizar: quitar BASE del pathname para comparar contra rutas "planas"
-  const path =
-    BASE && pathname.startsWith(BASE)
-      ? pathname.slice(BASE.length) || '/'
-      : pathname;
-
-  if (isStatic(path) || isPublic(path)) return NextResponse.next();
-
-  const token = req.cookies.get('token')?.value;
-
-  // Sin token → mandar a /login (pero no si ya estás ahí)
-  if (!token) {
-    if (path !== LOGIN_PATH && !path.startsWith('/login/')) {
-      return NextResponse.redirect(new URL(toAbs(LOGIN_PATH), req.url));
-    }
-    return NextResponse.next();
-  }
-
-  try {
-    const secret = process.env.JWT_SECRET;
-    if (!secret) throw new Error('Missing JWT_SECRET');
-    await jwtVerify(token, new TextEncoder().encode(secret));
-
-    // Con token válido y visitando /login → /dashboard
-    if (path === LOGIN_PATH || path.startsWith('/login/')) {
-      return NextResponse.redirect(new URL(toAbs(DASHBOARD_PATH), req.url));
-    }
-    return NextResponse.next();
-  } catch {
-    // Token inválido: si ya estás en /login, no redirijas otra vez
-    if (path === LOGIN_PATH || path.startsWith('/login/')) {
-      const res = NextResponse.next();
-      res.cookies.delete('token');
-      return res;
-    }
-    const res = NextResponse.redirect(new URL(toAbs(LOGIN_PATH), req.url));
-    res.cookies.delete('token');
-    return res;
-  }
+// Quita el basePath del pathname para comparar rutas de forma consistente
+function stripBase(pathname: string): string {
+  if (!BASE) return pathname;
+  if (pathname === BASE || pathname === `${BASE}/`) return '/';
+  return pathname.startsWith(BASE) ? pathname.slice(BASE.length) || '/' : pathname;
 }
 
-// Ejecutar en dev (/) y prod (/a03)
+// Agrega el basePath a una ruta relativa
+function withBase(path: string): string {
+  const p = path.startsWith('/') ? path : `/${path}`;
+  return `${BASE}${p}`.replace(/\/{2,}/g, '/');
+}
+
+// Construye una URL absoluta hacia `path` respetando el basePath actual
+function abs(req: NextRequest, path: string): URL {
+  return new URL(withBase(path), req.url);
+}
+
+export function middleware(req: NextRequest) {
+  const { nextUrl, cookies } = req;
+
+  // normalizamos el path (sin base) para comparar
+  const rawPath = nextUrl.pathname;
+  const path = stripBase(rawPath);
+
+  const isApi = path.startsWith('/api');
+  const isPublic =
+    PUBLIC_EXACT.has(path) ||
+    PUBLIC_PREFIX.some((pref) => path === pref || path.startsWith(pref + '/'));
+
+  // Detectá tu cookie de sesión (ajustá el nombre si usás otra)
+  const token =
+    cookies.get('token')?.value ||
+    cookies.get('auth_token')?.value ||
+    cookies.get('session')?.value ||
+    null;
+
+  // Si no hay sesión y la ruta no es pública
+  if (!token && !isPublic) {
+    if (isApi) {
+      // Para APIs devolvemos 401 JSON (mejor DX en fetch)
+      return new NextResponse(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    // Para páginas redirigimos a /login, guardando el destino en ?next=
+    const url = abs(req, '/login');
+    url.searchParams.set('next', path);
+    return NextResponse.redirect(url);
+  }
+
+  // Si hay sesión y viene a /login o /register, mandalo al dashboard
+  if (token && (path === '/login' || path === '/register')) {
+    return NextResponse.redirect(abs(req, '/dashboard'));
+  }
+
+  // Continuar normalmente
+  return NextResponse.next();
+}
+
+// Matcher agnóstico del basePath (Next aplica el matcher tras el basePath).
+// Ignoramos assets de Next y archivos públicos comunes.
 export const config = {
-  matcher: ['/(.*)', '/a03/(.*)'],
+  matcher: ['/((?!_next|favicon.ico|robots.txt|sitemap.xml|static|assets).*)'],
 };

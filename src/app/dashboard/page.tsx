@@ -6,6 +6,10 @@ import SensorActuatorForm, { type SensorActuatorFormValues } from '../components
 
 type Item = { id: string; name: string };
 
+// Prefijo de API según entorno ('' en dev, '/a03' en prod)
+const BASE = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
+const api = (p: string) => `${BASE}${p}`;
+
 export default function DashboardPage() {
   const [openSensor, setOpenSensor] = useState(false);
   const [openActuador, setOpenActuador] = useState(false);
@@ -27,7 +31,7 @@ export default function DashboardPage() {
   const loadSensores = async () => {
     setLoading(s => ({ ...s, sens: true }));
     try {
-      const res = await fetch('/api/sensors', { cache: 'no-store' });
+      const res = await fetch(api('/api/sensors'), { cache: 'no-store' });
       const data: Item[] = await res.json();
       setSensores(data);
     } finally {
@@ -38,7 +42,7 @@ export default function DashboardPage() {
   const loadActuadores = async () => {
     setLoading(s => ({ ...s, act: true }));
     try {
-      const res = await fetch('/api/actuators', { cache: 'no-store' });
+      const res = await fetch(api('/api/actuators'), { cache: 'no-store' });
       const data: Item[] = await res.json();
       setActuadores(data);
     } finally {
@@ -60,7 +64,7 @@ export default function DashboardPage() {
 
   const handleEditSensor = async (id: string) => {
     // traemos detalle antes de abrir para que el form se inicialice con esos valores
-    const res = await fetch(`/api/sensors/${id}`, { cache: 'no-store' });
+    const res = await fetch(api(`/api/sensors/${id}`), { cache: 'no-store' });
     if (!res.ok) {
       alert('No se pudo cargar el sensor');
       return;
@@ -72,7 +76,7 @@ export default function DashboardPage() {
   };
 
   const submitSensor = async (vals: SensorActuatorFormValues) => {
-    const url = editingSensorId ? `/api/sensors/${editingSensorId}` : '/api/sensors';
+    const url = editingSensorId ? api(`/api/sensors/${editingSensorId}`) : api('/api/sensors');
     const method = editingSensorId ? 'PATCH' : 'POST';
     const res = await fetch(url, {
       method,
@@ -92,7 +96,7 @@ export default function DashboardPage() {
 
   const handleDeleteSensor = async (id: string) => {
     if (!confirm('¿Eliminar este sensor?')) return;
-    const res = await fetch(`/api/sensors/${id}`, { method: 'DELETE' });
+    const res = await fetch(api(`/api/sensors/${id}`), { method: 'DELETE' });
     if (!res.ok && res.status !== 204) {
       const j = await res.json().catch(() => ({}));
       alert(j?.error ?? 'No se pudo eliminar');
@@ -109,7 +113,7 @@ export default function DashboardPage() {
   };
 
   const handleEditActuator = async (id: string) => {
-    const res = await fetch(`/api/actuators/${id}`, { cache: 'no-store' });
+    const res = await fetch(api(`/api/actuators/${id}`), { cache: 'no-store' });
     if (!res.ok) {
       alert('No se pudo cargar el actuador');
       return;
@@ -121,7 +125,7 @@ export default function DashboardPage() {
   };
 
   const submitActuador = async (vals: SensorActuatorFormValues) => {
-    const url = editingActuatorId ? `/api/actuators/${editingActuatorId}` : '/api/actuators';
+    const url = editingActuatorId ? api(`/api/actuators/${editingActuatorId}`) : api('/api/actuators');
     const method = editingActuatorId ? 'PATCH' : 'POST';
     const res = await fetch(url, {
       method,
@@ -141,7 +145,7 @@ export default function DashboardPage() {
 
   const handleDeleteActuator = async (id: string) => {
     if (!confirm('¿Eliminar este actuador?')) return;
-    const res = await fetch(`/api/actuators/${id}`, { method: 'DELETE' });
+    const res = await fetch(api(`/api/actuators/${id}`), { method: 'DELETE' });
     if (!res.ok && res.status !== 204) {
       const j = await res.json().catch(() => ({}));
       alert(j?.error ?? 'No se pudo eliminar');
