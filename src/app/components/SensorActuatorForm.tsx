@@ -77,15 +77,24 @@ export default function SensorActuatorForm({
 
   const validate = () => {
     const next: Record<string, string> = {};
+
     if (!values.nombre.trim()) next.nombre = 'El nombre es obligatorio.';
     if (!values.unidadMedida.trim()) next.unidadMedida = 'La unidad de medida es obligatoria.';
     if (!values.fuenteDatos.trim()) next.fuenteDatos = 'La fuente de datos es obligatoria.';
 
-    const min = values.valorMin.trim() === '' ? null : Number(values.valorMin);
-    const max = values.valorMax.trim() === '' ? null : Number(values.valorMax);
-    if (values.valorMin && Number.isNaN(min)) next.valorMin = 'Debe ser un número.';
-    if (values.valorMax && Number.isNaN(max)) next.valorMax = 'Debe ser un número.';
-    if (min !== null && max !== null && min > max) next.valorMax = 'El máximo debe ser ≥ mínimo.';
+    // Ahora son obligatorios:
+    if (values.valorMin.trim() === '') next.valorMin = 'El mínimo es obligatorio.';
+    if (values.valorMax.trim() === '') next.valorMax = 'El máximo es obligatorio.';
+
+    const min = Number(values.valorMin);
+    const max = Number(values.valorMax);
+
+    if (values.valorMin.trim() !== '' && Number.isNaN(min)) next.valorMin = 'Debe ser un número.';
+    if (values.valorMax.trim() !== '' && Number.isNaN(max)) next.valorMax = 'Debe ser un número.';
+
+    if (!Number.isNaN(min) && !Number.isNaN(max) && min > max) {
+      next.valorMax = 'El máximo debe ser ≥ mínimo.';
+    }
 
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -162,7 +171,7 @@ export default function SensorActuatorForm({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className="block mb-1 text-sm text-gray-600" htmlFor="valorMin">
-            Valor mínimo (opcional)
+            Valor mínimo
           </label>
           <input
             id="valorMin"
@@ -172,13 +181,14 @@ export default function SensorActuatorForm({
             onChange={handleChange('valorMin')}
             placeholder="p. ej. 0"
             className="w-full px-3 py-2 border border-gray-300 text-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            required
           />
           {errors.valorMin && <p className="text-xs text-red-600 mt-1">{errors.valorMin}</p>}
         </div>
 
         <div>
           <label className="block mb-1 text-sm text-gray-600" htmlFor="valorMax">
-            Valor máximo (opcional)
+            Valor máximo
           </label>
           <input
             id="valorMax"
@@ -188,6 +198,7 @@ export default function SensorActuatorForm({
             onChange={handleChange('valorMax')}
             placeholder="p. ej. 14"
             className="w-full px-3 py-2 border border-gray-300 text-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            required
           />
           {errors.valorMax && <p className="text-xs text-red-600 mt-1">{errors.valorMax}</p>}
         </div>
@@ -203,7 +214,7 @@ export default function SensorActuatorForm({
           type="text"
           value={values.fuenteDatos}
           onChange={handleChange('fuenteDatos')}
-          placeholder="p. ej. Node-RED, OPC-UA, MQTT tópico /bioreactor/ph"
+          placeholder="p. ej. MQTT tópico /bioreactor/ph"
           className="w-full px-3 py-2 border border-gray-300 text-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
         />
