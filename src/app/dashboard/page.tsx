@@ -19,6 +19,8 @@ export default function DashboardPage() {
   // edición
   const [editingSensorId, setEditingSensorId] = useState<string | null>(null);
   const [editingActuatorId, setEditingActuatorId] = useState<string | null>(null);
+  const [editingProyectoId, setEditingProyectoId] = useState<string | null>(null);
+
   const [sensorInitial, setSensorInitial] = useState<Partial<SensorActuatorFormValues> | undefined>(undefined);
   const [actuatorInitial, setActuatorInitial] = useState<Partial<SensorActuatorFormValues> | undefined>(undefined);
   const [proyectoInitial, setProyectoInitial] = useState<Partial<ProjectFormValues> | undefined>(undefined);
@@ -169,15 +171,31 @@ export default function DashboardPage() {
     await loadActuadores();
   };
 
-  // ------------------------ Crear Proyecto ------------------------
+  // ------------------------ Crear / Editar Proyecto ------------------------
   const openNewProyecto = () => {
+    setEditingProyectoId(null);
     setProyectoInitial(undefined);
     setOpenProyecto(true);
   };
 
+  const handleEditProyecto = async (id: string) => {
+    const res = await fetch(api(`/api/projects/${id}`), { cache: 'no-store' });
+    if (!res.ok) {
+      alert('No se pudo cargar el proyecto');
+      return;
+    }
+    const d = await res.json();
+    // d = { nombre, descripcion, sensorIds:number[], actuatorIds:number[] }
+    setProyectoInitial(d);
+    setEditingProyectoId(id);
+    setOpenProyecto(true);
+  };
+
   const submitProyecto = async (vals: ProjectFormValues) => {
-    const res = await fetch(api('/api/projects'), {
-      method: 'POST',
+    const url = editingProyectoId ? api(`/api/projects/${editingProyectoId}`) : api('/api/projects');
+    const method = editingProyectoId ? 'PATCH' : 'POST';
+    const res = await fetch(url, {
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(vals),
     });
@@ -187,8 +205,20 @@ export default function DashboardPage() {
       return;
     }
     setOpenProyecto(false);
+    setEditingProyectoId(null);
     setProyectoInitial(undefined);
     await loadProjects(); // refrescamos la lista real
+  };
+
+  const handleDeleteProyecto = async (id: string) => {
+    if (!confirm('¿Eliminar este proyecto? Esta acción es permanente.')) return;
+    const res = await fetch(api(`/api/projects/${id}`), { method: 'DELETE' });
+    if (!res.ok && res.status !== 204) {
+      const j = await res.json().catch(() => ({}));
+      alert(j?.error ?? 'No se pudo eliminar');
+      return;
+    }
+    await loadProjects();
   };
 
   // Listas simples para el form de proyectos (checkboxes)
@@ -209,6 +239,8 @@ export default function DashboardPage() {
             items={proyectos}
             addLabel={loading.proj ? 'Cargando...' : 'Nuevo proyecto'}
             onAdd={openNewProyecto}
+            onEdit={handleEditProyecto}
+            onDelete={handleDeleteProyecto}
           />
 
           <ElementList
@@ -257,11 +289,11 @@ export default function DashboardPage() {
       <ProjectForm
         asModal
         open={openProyecto}
-        onRequestClose={() => { setOpenProyecto(false); setProyectoInitial(undefined); }}
-        initialValues={proyectoInitial}
+        onRequestClose={() => { setOpenProyecto(false); setEditingProyectoId(null); setProyectoInitial(undefined); }}
+        initialValues={editingProyectoId ? proyectoInitial : undefined}
         sensores={sensoresSimple}
         actuadores={actuadoresSimple}
-        onCancel={() => { setOpenProyecto(false); setProyectoInitial(undefined); }}
+        onCancel={() => { setOpenProyecto(false); setEditingProyectoId(null); setProyectoInitial(undefined); }}
         onSubmit={submitProyecto}
       />
     </div>

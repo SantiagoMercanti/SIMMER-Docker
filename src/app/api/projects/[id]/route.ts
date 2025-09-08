@@ -1,105 +1,181 @@
-// export const runtime = 'nodejs';
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 
-// import { NextResponse } from 'next/server';
-// import { Prisma } from '@prisma/client';
-// import { prisma } from '@/lib/prisma';
-// import { requireAuth, isManagerOrAdmin } from '@/lib/auth';
+/**
+ * GET /api/projects/:id
+ * Devuelve datos completos para inicializar el form:
+ * { nombre, descripcion, sensorIds: number[], actuatorIds: number[] }
+ */
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const projectId = Number(id);
+  if (!Number.isInteger(projectId) || projectId <= 0) {
+    return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
+  }
 
-// function parseId(id: string | string[] | undefined): number | null {
-//   if (!id || Array.isArray(id)) return null;
-//   const n = Number(id);
-//   return Number.isInteger(n) ? n : null;
-// }
+  try {
+    const proj = await prisma.proyecto.findUnique({
+      where: { project_id: projectId },
+      include: {
+        sensores: { select: { sensorId: true } },
+        actuadores: { select: { actuadorId: true } },
+      },
+    });
 
-// function getStatus(e: unknown, fallback = 500): number {
-//   if (typeof e === 'object' && e !== null && 'status' in e) {
-//     const s = (e as { status?: unknown }).status;
-//     if (typeof s === 'number') return s;
-//   }
-//   return fallback;
-// }
+    if (!proj) {
+      return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 });
+    }
 
-// /** GET /api/projects/:id - Solo usuarios autenticados (>= operator) */
-// export async function GET(_: Request, { params }: { params: { id: string } }) {
-//   try {
-//     await requireAuth();
-//     const id = parseId(params.id);
-//     if (id == null) {
-//       return NextResponse.json({ message: 'ID inválido' }, { status: 400 });
-//     }
+    return NextResponse.json(
+      {
+        nombre: proj.nombre,
+        descripcion: proj.descripcion ?? '',
+        sensorIds: proj.sensores.map(s => s.sensorId),
+        actuatorIds: proj.actuadores.map(a => a.actuadorId),
+      },
+      { status: 200 }
+    );
+  } catch (err) {
+    console.error('GET /api/projects/:id error:', err);
+    return NextResponse.json({ error: 'Error al obtener el proyecto' }, { status: 500 });
+  }
+}
 
-//     const item = await prisma.proyecto.findUnique({ where: { project_id: id } });
-//     if (!item) {
-//       return NextResponse.json({ message: 'No encontrado' }, { status: 404 });
-//     }
+/**
+ * PATCH /api/projects/:id
+ * Body:
+ * {
+ *   nombre: string;
+ *   descripcion?: string | null;
+ *   sensorIds?: number[];
+ *   actuatorIds?: number[];
+ * }
+ * Actualiza el proyecto y REEMPLAZA sus relaciones N:M (borra y vuelve a crear pivotes).
+ */
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const projectId = Number(id);
+  if (!Number.isInteger(projectId) || projectId <= 0) {
+    return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
+  }
 
-//     return NextResponse.json(item);
-//   } catch (e: unknown) {
-//     const status = getStatus(e, 500);
-//     const message = status === 401 ? 'No autenticado' : 'Error al obtener proyecto';
-//     return NextResponse.json({ message }, { status });
-//   }
-// }
+  try {
+    const body = await req.json().catch(() => ({}));
+    const {
+      nombre,
+      descripcion = null,
+      sensorIds = [],
+      actuatorIds = [],
+    } = body ?? {};
 
-// /** PUT /api/projects/:id - Solo labManager/admin */
-// export async function PUT(req: Request, { params }: { params: { id: string } }) {
-//   try {
-//     const { role } = await requireAuth();
-//     if (!isManagerOrAdmin(role)) {
-//       return NextResponse.json({ message: 'No autorizado' }, { status: 403 });
-//     }
+    if (!nombre || typeof nombre !== 'string' || !nombre.trim()) {
+      return NextResponse.json({ error: 'El nombre es obligatorio.' }, { status: 400 });
+    }
+    if (descripcion !== null && descripcion !== undefined && typeof descripcion !== 'string') {
+      return NextResponse.json({ error: 'La descripción debe ser texto o null.' }, { status: 400 });
+    }
+    if (!Array.isArray(sensorIds) || !sensorIds.every((n: number) => Number.isInteger(n) && n > 0)) {
+      return NextResponse.json({ error: 'sensorIds debe ser un arreglo de enteros positivos.' }, { status: 400 });
+    }
+    if (!Array.isArray(actuatorIds) || !actuatorIds.every((n: number) => Number.isInteger(n) && n > 0)) {
+      return NextResponse.json({ error: 'actuatorIds debe ser un arreglo de enteros positivos.' }, { status: 400 });
+    }
 
-//     const id = parseId(params.id);
-//     if (id == null) {
-//       return NextResponse.json({ message: 'ID inválido' }, { status: 400 });
-//     }
+    // Validaciones opcionales de existencia
+    if (sensorIds.length) {
+      const countSens = await prisma.sensor.count({ where: { sensor_id: { in: sensorIds } } });
+      if (countSens !== sensorIds.length) {
+        return NextResponse.json({ error: 'Uno o más sensorIds no existen.' }, { status: 400 });
+      }
+    }
+    if (actuatorIds.length) {
+      const countActs = await prisma.actuador.count({ where: { actuator_id: { in: actuatorIds } } });
+      if (countActs !== actuatorIds.length) {
+        return NextResponse.json({ error: 'Uno o más actuatorIds no existen.' }, { status: 400 });
+      }
+    }
 
-//     const body = await req.json();
-//     const data = {
-//       nombre: body?.nombre !== undefined ? String(body.nombre).trim() : undefined,
-//       descripcion: body?.descripcion !== undefined ? String(body.descripcion) : undefined,
-//     };
+    // Transacción: update + reset pivotes
+    const updated = await prisma.$transaction(async (tx) => {
+      // Asegurar existencia
+      const exists = await tx.proyecto.findUnique({ where: { project_id: projectId }, select: { project_id: true } });
+      if (!exists) throw new Error('NOT_FOUND');
 
-//     const updated = await prisma.proyecto.update({
-//       where: { project_id: id },
-//       data,
-//     });
+      await tx.proyecto.update({
+        where: { project_id: projectId },
+        data: {
+          nombre: nombre.trim(),
+          descripcion: descripcion?.trim() ?? null,
+        },
+      });
 
-//     return NextResponse.json(updated);
-//   } catch (e: unknown) {
-//     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
-//       return NextResponse.json({ message: 'No encontrado' }, { status: 404 });
-//     }
-//     console.error('PUT /api/projects/[id]', e);
-//     const status = getStatus(e, 500);
-//     const message = status === 401 ? 'No autenticado' : 'Error al actualizar proyecto';
-//     return NextResponse.json({ message }, { status });
-//   }
-// }
+      // Borrar pivotes actuales
+      await tx.proyectoSensor.deleteMany({ where: { proyectoId: projectId } });
+      await tx.proyectoActuador.deleteMany({ where: { proyectoId: projectId } });
 
-// /** DELETE /api/projects/:id - Solo labManager/admin */
-// export async function DELETE(_: Request, { params }: { params: { id: string } }) {
-//   try {
-//     const { role } = await requireAuth();
-//     if (!isManagerOrAdmin(role)) {
-//       return NextResponse.json({ message: 'No autorizado' }, { status: 403 });
-//     }
+      // Crear pivotes nuevos
+      if (sensorIds.length) {
+        await tx.proyectoSensor.createMany({
+          data: sensorIds.map((sid: number) => ({ proyectoId: projectId, sensorId: sid })),
+          skipDuplicates: true,
+        });
+      }
+      if (actuatorIds.length) {
+        await tx.proyectoActuador.createMany({
+          data: actuatorIds.map((aid: number) => ({ proyectoId: projectId, actuadorId: aid })),
+          skipDuplicates: true,
+        });
+      }
 
-//     const id = parseId(params.id);
-//     if (id == null) {
-//       return NextResponse.json({ message: 'ID inválido' }, { status: 400 });
-//     }
+      return tx.proyecto.findUnique({
+        where: { project_id: projectId },
+        select: { project_id: true, nombre: true },
+      });
+    });
 
-//     await prisma.proyecto.delete({ where: { project_id: id } });
-//     return NextResponse.json({ message: 'Eliminado' });
-//   } catch (e: unknown) {
-//     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
-//       return NextResponse.json({ message: 'No encontrado' }, { status: 404 });
-//     }
-//     console.error('DELETE /api/projects/[id]', e);
-//     const status = getStatus(e, 500);
-//     const message = status === 401 ? 'No autenticado' : 'Error al eliminar proyecto';
-//     return NextResponse.json({ message }, { status });
-//   }
-// }
-export {};
+    return NextResponse.json(
+      { id: String(updated?.project_id), name: updated?.nombre, message: 'Proyecto actualizado' },
+      { status: 200 }
+    );
+  } catch (err: unknown) {
+    if (typeof err === 'object' && err !== null && 'message' in err && (err as { message?: string }).message === 'NOT_FOUND') {
+      return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 });
+    }
+    console.error('PATCH /api/projects/:id error:', err);
+    return NextResponse.json({ error: 'No se pudo actualizar el proyecto' }, { status: 500 });
+  }
+}
+
+/**
+ * DELETE /api/projects/:id
+ * Borra el proyecto. Con tu schema (onDelete: Cascade en pivotes) se eliminan también
+ * las filas de ProyectoSensor y ProyectoActuador automáticamente.
+ */
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const projectId = Number(id);
+  if (!Number.isInteger(projectId) || projectId <= 0) {
+    return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
+  }
+
+  try {
+    await prisma.proyecto.delete({ where: { project_id: projectId } });
+    return new NextResponse(null, { status: 204 });
+  } catch (err: unknown) {
+    // Si no existe, devolver 404
+    if (typeof err === 'object' && err !== null && 'code' in err && (err as { code?: string }).code === 'P2025') {
+      return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 });
+    }
+    console.error('DELETE /api/projects/:id error:', err);
+    return NextResponse.json({ error: 'No se pudo eliminar el proyecto' }, { status: 500 });
+  }
+}
