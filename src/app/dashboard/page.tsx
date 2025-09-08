@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import ElementList from '../components/ElementList';
 import SensorActuatorForm, { type SensorActuatorFormValues } from '../components/SensorActuatorForm';
+import ProjectForm, { type ProjectFormValues, type SimpleItem } from '../components/ProjectForm';
 
 type Item = { id: string; name: string };
 
@@ -13,20 +14,33 @@ const api = (p: string) => `${BASE}${p}`;
 export default function DashboardPage() {
   const [openSensor, setOpenSensor] = useState(false);
   const [openActuador, setOpenActuador] = useState(false);
+  const [openProyecto, setOpenProyecto] = useState(false);
 
   // edición
   const [editingSensorId, setEditingSensorId] = useState<string | null>(null);
   const [editingActuatorId, setEditingActuatorId] = useState<string | null>(null);
   const [sensorInitial, setSensorInitial] = useState<Partial<SensorActuatorFormValues> | undefined>(undefined);
   const [actuatorInitial, setActuatorInitial] = useState<Partial<SensorActuatorFormValues> | undefined>(undefined);
+  const [proyectoInitial, setProyectoInitial] = useState<Partial<ProjectFormValues> | undefined>(undefined);
 
-  const [proyectos] = useState<Item[]>([
-    { id: 'p1', name: 'BioReactor A' },
-    { id: 'p2', name: 'Fermentor 200L' },
-  ]);
+  // Datos del dashboard
+  const [proyectos, setProyectos] = useState<Item[]>([]);
   const [sensores, setSensores] = useState<Item[]>([]);
   const [actuadores, setActuadores] = useState<Item[]>([]);
-  const [loading, setLoading] = useState({ sens: false, act: false });
+  const [loading, setLoading] = useState({ proj: false, sens: false, act: false });
+
+  // ------- CARGA: Proyectos / Sensores / Actuadores -------
+  const loadProjects = async () => {
+    setLoading(s => ({ ...s, proj: true }));
+    try {
+      const res = await fetch(api('/api/projects'), { cache: 'no-store' });
+      if (!res.ok) throw new Error('No se pudieron obtener proyectos');
+      const data: Item[] = await res.json();
+      setProyectos(data);
+    } finally {
+      setLoading(s => ({ ...s, proj: false }));
+    }
+  };
 
   const loadSensores = async () => {
     setLoading(s => ({ ...s, sens: true }));
@@ -51,11 +65,12 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    loadProjects();
     loadSensores();
     loadActuadores();
   }, []);
 
-  // --- Crear / Editar Sensor ---
+  // ----------------- Crear / Editar Sensor -----------------
   const openNewSensor = () => {
     setEditingSensorId(null);
     setSensorInitial(undefined);
@@ -105,7 +120,7 @@ export default function DashboardPage() {
     await loadSensores();
   };
 
-  // --- Crear / Editar Actuador ---
+  // ----------------- Crear / Editar Actuador -----------------
   const openNewActuator = () => {
     setEditingActuatorId(null);
     setActuatorInitial(undefined);
@@ -154,6 +169,32 @@ export default function DashboardPage() {
     await loadActuadores();
   };
 
+  // ------------------------ Crear Proyecto ------------------------
+  const openNewProyecto = () => {
+    setProyectoInitial(undefined);
+    setOpenProyecto(true);
+  };
+
+  const submitProyecto = async (vals: ProjectFormValues) => {
+    const res = await fetch(api('/api/projects'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(vals),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      alert(j?.error ?? 'Error al guardar el proyecto');
+      return;
+    }
+    setOpenProyecto(false);
+    setProyectoInitial(undefined);
+    await loadProjects(); // refrescamos la lista real
+  };
+
+  // Listas simples para el form de proyectos (checkboxes)
+  const sensoresSimple: SimpleItem[] = sensores.map(s => ({ id: Number(s.id), name: s.name }));
+  const actuadoresSimple: SimpleItem[] = actuadores.map(a => ({ id: Number(a.id), name: a.name }));
+
   return (
     <div className="min-h-screen bg-gray-100 px-4 py-8">
       <div className="mx-auto max-w-7xl">
@@ -166,8 +207,8 @@ export default function DashboardPage() {
           <ElementList
             title="Proyectos"
             items={proyectos}
-            addLabel="Nuevo proyecto"
-            onAdd={() => console.log('Abrir formulario de proyecto')}
+            addLabel={loading.proj ? 'Cargando...' : 'Nuevo proyecto'}
+            onAdd={openNewProyecto}
           />
 
           <ElementList
@@ -210,6 +251,18 @@ export default function DashboardPage() {
         initialValues={editingActuatorId ? actuatorInitial : undefined}
         onCancel={() => { setOpenActuador(false); setEditingActuatorId(null); setActuatorInitial(undefined); }}
         onSubmit={submitActuador}
+      />
+
+      {/* MODAL: Proyecto */}
+      <ProjectForm
+        asModal
+        open={openProyecto}
+        onRequestClose={() => { setOpenProyecto(false); setProyectoInitial(undefined); }}
+        initialValues={proyectoInitial}
+        sensores={sensoresSimple}
+        actuadores={actuadoresSimple}
+        onCancel={() => { setOpenProyecto(false); setProyectoInitial(undefined); }}
+        onSubmit={submitProyecto}
       />
     </div>
   );
