@@ -6,6 +6,7 @@ import SensorActuatorForm, { type SensorActuatorFormValues } from '../components
 import ProjectForm, { type ProjectFormValues, type SimpleItem } from '../components/ProjectForm';
 
 type Item = { id: string; name: string };
+type Role = 'operator' | 'labManager' | 'admin';
 
 // Prefijo de API según entorno ('' en dev, '/a03' en prod)
 const BASE = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
@@ -30,6 +31,10 @@ export default function DashboardPage() {
   const [sensores, setSensores] = useState<Item[]>([]);
   const [actuadores, setActuadores] = useState<Item[]>([]);
   const [loading, setLoading] = useState({ proj: false, sens: false, act: false });
+
+  // Permisos por rol: por defecto 'desconocido' => sin mutación para evitar parpadeo
+  const [role, setRole] = useState<Role | 'unknown'>('unknown');
+  const canMutate = role === 'labManager' || role === 'admin';
 
   // ------- CARGA: Proyectos / Sensores / Actuadores -------
   const loadProjects = async () => {
@@ -66,7 +71,20 @@ export default function DashboardPage() {
     }
   };
 
+  // Carga del rol actual
+  const loadRole = async () => {
+    try {
+      const res = await fetch(api('/api/me'), { cache: 'no-store' });
+      if (!res.ok) throw new Error('No se pudo obtener el rol');
+      const j = (await res.json()) as { role?: Role };
+      setRole(j?.role ?? 'operator'); // si no vino rol, lo tratamos como operator
+    } catch {
+      setRole('operator'); // en error => sin permisos de mutación
+    }
+  };
+
   useEffect(() => {
+    loadRole();
     loadProjects();
     loadSensores();
     loadActuadores();
@@ -241,6 +259,9 @@ export default function DashboardPage() {
             onAdd={openNewProyecto}
             onEdit={handleEditProyecto}
             onDelete={handleDeleteProyecto}
+            canCreate={canMutate}
+            canEdit={canMutate}
+            canDelete={canMutate}
           />
 
           <ElementList
@@ -250,6 +271,9 @@ export default function DashboardPage() {
             onAdd={openNewSensor}
             onEdit={handleEditSensor}
             onDelete={handleDeleteSensor}
+            canCreate={canMutate}
+            canEdit={canMutate}
+            canDelete={canMutate}
           />
 
           <ElementList
@@ -259,6 +283,9 @@ export default function DashboardPage() {
             onAdd={openNewActuator}
             onEdit={handleEditActuator}
             onDelete={handleDeleteActuator}
+            canCreate={canMutate}
+            canEdit={canMutate}
+            canDelete={canMutate}
           />
         </div>
       </div>

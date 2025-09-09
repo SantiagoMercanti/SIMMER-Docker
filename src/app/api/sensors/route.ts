@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireCanMutate } from '@/lib/auth';
 
 // GET /api/sensors → [{id, name}]
 export async function GET() {
@@ -15,6 +16,9 @@ export async function GET() {
 // POST /api/sensors
 export async function POST(req: Request) {
   try {
+    // Bloquea a 'operator' (y lanza 401 si no hay sesión)
+    await requireCanMutate();
+
     const body = await req.json();
 
     const nombre: string = (body?.nombre ?? '').trim();
@@ -51,7 +55,10 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ id: String(created.sensor_id), name: created.nombre }, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: 'Error creando sensor' }, { status: 500 });
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status ?? 500;
+    if (status === 401) return NextResponse.json({ error: 'No autenticado' }, { status });
+    if (status === 403) return NextResponse.json({ error: 'No tienes permisos para crear sensores' }, { status });
+    return NextResponse.json({ error: 'Error creando sensor' }, { status });
   }
 }
