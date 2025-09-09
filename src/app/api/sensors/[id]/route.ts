@@ -20,13 +20,32 @@ export async function GET(
   }
 
   try {
-    const sensor = await prisma.sensor.findUnique({
+    const s = await prisma.sensor.findUnique({
       where: { sensor_id: intId },
+      select: {
+        sensor_id: true,
+        nombre: true,
+        descripcion: true,
+        unidad_de_medida: true,
+        valor_min: true,
+        valor_max: true,
+        fuente_datos: true,
+      },
     });
-    if (!sensor) {
+    if (!s) {
       return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
     }
-    return NextResponse.json(sensor);
+
+    // Normalizamos a la forma que usa el formulario
+    return NextResponse.json({
+      id: s.sensor_id,
+      nombre: s.nombre,
+      descripcion: s.descripcion ?? '',
+      unidadMedida: String(s.unidad_de_medida ?? ''), // <- string
+      valorMin: String(s.valor_min ?? ''),            // <- string
+      valorMax: String(s.valor_max ?? ''),            // <- string
+      fuenteDatos: String(s.fuente_datos ?? ''),      // <- string
+    });
   } catch (_err: unknown) {
     return NextResponse.json({ error: 'Error del servidor', err: _err }, { status: 500 });
   }
