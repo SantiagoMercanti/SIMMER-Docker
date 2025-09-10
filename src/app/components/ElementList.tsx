@@ -12,6 +12,8 @@ type ElementListProps = {
   onAdd?: () => void;
   onEdit?: (id: string) => void;
   onDelete?: (id: string) => void;
+  /** Abrir modal de detalle al clickear el nombre */
+  onView?: (id: string) => void;
   /** Permisos (default true para no romper otros usos) */
   canCreate?: boolean;
   canEdit?: boolean;
@@ -25,6 +27,7 @@ export default function ElementList({
   onAdd,
   onEdit,
   onDelete,
+  onView,
   canCreate = true,
   canEdit = true,
   canDelete = true,
@@ -50,7 +53,19 @@ export default function ElementList({
         <ul className="divide-y divide-gray-200">
           {items.map((item) => (
             <li key={item.id} className="flex items-center justify-between py-3">
-              <span className="text-gray-700">{item.name}</span>
+              {onView ? (
+                <button
+                  type="button"
+                  onClick={() => onView(item.id)}
+                  className="text-left text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  title="Ver detalles"
+                >
+                  {item.name}
+                </button>
+              ) : (
+                <span className="text-gray-700">{item.name}</span>
+              )}
+
               <div className="flex items-center gap-2">
                 {onEdit && canEdit && (
                   <button

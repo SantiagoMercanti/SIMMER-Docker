@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import ElementList from '../components/ElementList';
 import SensorActuatorForm, { type SensorActuatorFormValues } from '../components/SensorActuatorForm';
 import ProjectForm, { type ProjectFormValues, type SimpleItem } from '../components/ProjectForm';
+import SensorDetailsModal from '../components/SensorDetailsModal';
 
 type Item = { id: string; name: string };
 type Role = 'operator' | 'labManager' | 'admin';
@@ -35,6 +36,10 @@ export default function DashboardPage() {
   // Permisos por rol: por defecto 'desconocido' => sin mutación para evitar parpadeo
   const [role, setRole] = useState<Role | 'unknown'>('unknown');
   const canMutate = role === 'labManager' || role === 'admin';
+
+  // Modal de detalle de elementos
+  const [openSensorDetails, setOpenSensorDetails] = useState(false);
+  const [selectedSensorId, setSelectedSensorId] = useState<string | null>(null);
 
   // ------- CARGA: Proyectos / Sensores / Actuadores -------
   const loadProjects = async () => {
@@ -105,7 +110,16 @@ export default function DashboardPage() {
       return;
     }
     const d = await res.json();
-    setSensorInitial(d);
+
+    // ⬇️ Normalizá a strings lo que el form espera como texto
+    setSensorInitial({
+      ...d,
+      unidadMedida: d.unidadMedida ?? '',
+      fuenteDatos: d.fuenteDatos ?? '',
+      valorMin: d.valorMin !== null && d.valorMin !== undefined ? String(d.valorMin) : '',
+      valorMax: d.valorMax !== null && d.valorMax !== undefined ? String(d.valorMax) : '',
+    });
+
     setEditingSensorId(id);
     setOpenSensor(true);
   };
@@ -243,6 +257,12 @@ export default function DashboardPage() {
   const sensoresSimple: SimpleItem[] = sensores.map(s => ({ id: Number(s.id), name: s.name }));
   const actuadoresSimple: SimpleItem[] = actuadores.map(a => ({ id: Number(a.id), name: a.name }));
 
+  // NUEVO: abrir modal de detalle al clickear nombre del sensor
+  const handleViewSensor = (id: string) => {
+    setSelectedSensorId(id);
+    setOpenSensorDetails(true);
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 px-4 py-8">
       <div className="mx-auto max-w-7xl">
@@ -271,6 +291,7 @@ export default function DashboardPage() {
             onAdd={openNewSensor}
             onEdit={handleEditSensor}
             onDelete={handleDeleteSensor}
+            onView={handleViewSensor}
             canCreate={canMutate}
             canEdit={canMutate}
             canDelete={canMutate}
@@ -322,6 +343,21 @@ export default function DashboardPage() {
         actuadores={actuadoresSimple}
         onCancel={() => { setOpenProyecto(false); setEditingProyectoId(null); setProyectoInitial(undefined); }}
         onSubmit={submitProyecto}
+      />
+
+      {/* NUEVO: MODAL DETALLE SENSOR */}
+      <SensorDetailsModal
+        open={openSensorDetails}
+        sensorId={selectedSensorId}
+        onClose={() => { setOpenSensorDetails(false); setSelectedSensorId(null); }}
+        onGoProjects={(sid) => {
+          // placeholder: más adelante podemos navegar o abrir otra vista
+          console.log('Ir a proyectos del sensor', sid);
+        }}
+        onGoLogs={(sid) => {
+          // placeholder: más adelante podemos navegar o abrir otra vista
+          console.log('Ir a registro de mediciones del sensor', sid);
+        }}
       />
     </div>
   );

@@ -29,22 +29,28 @@ export async function GET(
         unidad_de_medida: true,
         valor_min: true,
         valor_max: true,
+        estado: true,
         fuente_datos: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
     if (!s) {
       return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
     }
 
-    // Normalizamos a la forma que usa el formulario
+    // Ahora devolvemos los rangos como NUMBER (float) y el resto explícito:
     return NextResponse.json({
-      id: s.sensor_id,
-      nombre: s.nombre,
-      descripcion: s.descripcion ?? '',
-      unidadMedida: String(s.unidad_de_medida ?? ''), // <- string
-      valorMin: String(s.valor_min ?? ''),            // <- string
-      valorMax: String(s.valor_max ?? ''),            // <- string
-      fuenteDatos: String(s.fuente_datos ?? ''),      // <- string
+      id: s.sensor_id,                              // number
+      nombre: s.nombre,                             // string
+      descripcion: s.descripcion ?? null,           // string | null
+      unidadMedida: s.unidad_de_medida ?? '',       // string (como antes)
+      valorMin: s.valor_min ?? null,                // number | null  ✅
+      valorMax: s.valor_max ?? null,                // number | null  ✅
+      estado: Boolean(s.estado),                    // boolean
+      fuenteDatos: s.fuente_datos ?? null,          // string | null
+      createdAt: s.createdAt,                       // ISO al serializar
+      updatedAt: s.updatedAt,                       // ISO al serializar
     });
   } catch (_err: unknown) {
     return NextResponse.json({ error: 'Error del servidor', err: _err }, { status: 500 });
