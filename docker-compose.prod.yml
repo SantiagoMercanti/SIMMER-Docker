@@ -11,7 +11,7 @@ services:
     volumes:
       - db_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
+      test: [ "CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent" ]
       interval: 5s
       timeout: 5s
       retries: 30
@@ -37,6 +37,23 @@ services:
       db:
         condition: service_healthy
     # ❗️Sin 'command': se usa el CMD del Dockerfile (migrate deploy + node server.js)
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: simmer_phpmyadmin
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PMA_HOST: db # nombre del servicio MySQL en este compose
+      PMA_PORT: 3306
+      PMA_ABSOLUTE_URI: http://localhost:8080/
+      # Opcionales, solo para autocompletar usuario en el login:
+      PMA_USER: ${MYSQL_USER:-simmer}
+      PMA_PASSWORD: ${MYSQL_PASSWORD:-simmer_password}
+    ports:
+      - "127.0.0.1:8080:80" # lo expone SOLO en localhost (más seguro)
 
 volumes:
   db_data:
