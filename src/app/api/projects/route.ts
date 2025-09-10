@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireCanMutate } from '@/lib/auth'; // ⟵ nuevo
 
 // -------- GET /api/projects --------
 // Devuelve una lista simplificada para el dashboard: [{ id: string, name: string }]
@@ -35,6 +36,9 @@ export async function GET() {
 // }
 export async function POST(req: Request) {
   try {
+    // Bloquea a 'operator' (y lanza 401 si no hay sesión)
+    await requireCanMutate();
+
     const body = await req.json().catch(() => ({}));
     const {
       nombre,
@@ -57,8 +61,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'actuatorIds debe ser un arreglo de enteros positivos.' }, { status: 400 });
     }
 
-    // Opcional: verificar existencia previa de sensores/actuadores para dar mejor error
-    // (si te gusta el comportamiento "fail-fast")
+    // Verificación opcional de existencia (fail-fast)
     if (sensorIds.length) {
       const countSens = await prisma.sensor.count({ where: { sensor_id: { in: sensorIds } } });
       if (countSens !== sensorIds.length) {
@@ -72,13 +75,11 @@ export async function POST(req: Request) {
       }
     }
 
-    // Creación del proyecto + relaciones N:M usando las tablas pivote explícitas
+    // Creación del proyecto + relaciones N:M en las tablas pivote
     const nuevo = await prisma.proyecto.create({
       data: {
         nombre: nombre.trim(),
-        descripcion: descripcion?.trim() ?? null,
-
-        // Relaciones: Proyecto.sensores -> ProyectoSensor[]
+        descripcion: descripcion?.trim?.() ?? null,
         sensores: {
           create: sensorIds.map((sid: number) => ({
             sensor: { connect: { sensor_id: sid } },
@@ -106,12 +107,12 @@ export async function POST(req: Request) {
       },
       { status: 201 }
     );
-  } catch (err) {
-    console.error('POST /api/projects error:', err);
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status ?? 500;
+    if (status === 401) return NextResponse.json({ error: 'No autenticado' }, { status });
+    if (status === 403) return NextResponse.json({ error: 'No tienes permisos para crear proyectos' }, { status });
 
-    // Prisma codes útiles (por si preferís mensajes más específicos)
-    // if (err?.code === 'P2003') { ... } // foreign key
-    // if (err?.code === 'P2002') { ... } // unique
-    return NextResponse.json({ error: 'No se pudo crear el proyecto' }, { status: 500 });
+    console.error('POST /api/projects error:', err);
+    return NextResponse.json({ error: 'No se pudo crear el proyecto' }, { status });
   }
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireCanMutate } from '@/lib/auth'; // ⟵ nuevo
 
 /**
  * GET /api/projects/:id
@@ -14,7 +15,7 @@ export async function GET(
   const projectId = Number(id);
   if (!Number.isInteger(projectId) || projectId <= 0) {
     return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
-  }
+    }
 
   try {
     const proj = await prisma.proyecto.findUnique({
@@ -66,6 +67,9 @@ export async function PATCH(
   }
 
   try {
+    // Bloquea a 'operator' y lanza 401 si no hay sesión
+    await requireCanMutate();
+
     const body = await req.json().catch(() => ({}));
     const {
       nombre,
@@ -111,7 +115,7 @@ export async function PATCH(
         where: { project_id: projectId },
         data: {
           nombre: nombre.trim(),
-          descripcion: descripcion?.trim() ?? null,
+          descripcion: descripcion?.trim?.() ?? null,
         },
       });
 
@@ -144,6 +148,10 @@ export async function PATCH(
       { status: 200 }
     );
   } catch (err: unknown) {
+    const status = (err as { status?: number })?.status ?? 0;
+    if (status === 401) return NextResponse.json({ error: 'No autenticado' }, { status });
+    if (status === 403) return NextResponse.json({ error: 'No tienes permisos para editar proyectos' }, { status });
+
     if (typeof err === 'object' && err !== null && 'message' in err && (err as { message?: string }).message === 'NOT_FOUND') {
       return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 });
     }
@@ -168,9 +176,16 @@ export async function DELETE(
   }
 
   try {
+    // Bloquea a 'operator' y lanza 401 si no hay sesión
+    await requireCanMutate();
+
     await prisma.proyecto.delete({ where: { project_id: projectId } });
     return new NextResponse(null, { status: 204 });
   } catch (err: unknown) {
+    const status = (err as { status?: number })?.status ?? 0;
+    if (status === 401) return NextResponse.json({ error: 'No autenticado' }, { status });
+    if (status === 403) return NextResponse.json({ error: 'No tienes permisos para eliminar proyectos' }, { status });
+
     // Si no existe, devolver 404
     if (typeof err === 'object' && err !== null && 'code' in err && (err as { code?: string }).code === 'P2025') {
       return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 });
