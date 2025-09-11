@@ -5,7 +5,11 @@ const BASE = (process.env.NEXT_PUBLIC_BASE_PATH || process.env.BASE_PATH || '').
 
 // Rutas públicas exactas y prefijos públicos
 const PUBLIC_EXACT = new Set<string>(['/login', '/register']);
-const PUBLIC_PREFIX = ['/api/public']; // 🔧 FIX: todo /api/public/* es público
+const PUBLIC_PREFIX = ['/api/public']; // todo /api/public/* es público
+
+// Prefijos que requieren sesión (solo presencia de token).
+// El rol admin se valida dentro de la page / handlers con requireAdmin().
+const PROTECTED_PREFIX = ['/admin', '/api/users'];
 
 // Quita el basePath del pathname para comparar rutas de forma consistente
 function stripBase(pathname: string): string {
@@ -44,8 +48,15 @@ export function middleware(req: NextRequest) {
     cookies.get('session')?.value ||
     null;
 
-  // Si no hay sesión y la ruta no es pública
-  if (!token && !isPublic) {
+  // Si la ruta es pública, continuar
+  if (isPublic) {
+    return NextResponse.next();
+  }
+
+  // Si la ruta está bajo un prefijo protegido, exigimos sesión (solo presencia de token)
+  const needsAuth = PROTECTED_PREFIX.some((pref) => path === pref || path.startsWith(pref + '/'));
+
+  if (needsAuth && !token) {
     if (isApi) {
       // Para APIs devolvemos 401 JSON (mejor DX en fetch)
       return new NextResponse(JSON.stringify({ error: 'Unauthorized' }), {
@@ -53,13 +64,13 @@ export function middleware(req: NextRequest) {
         headers: { 'content-type': 'application/json' },
       });
     }
-    // Para páginas redirigimos a /login, guardando el destino en ?next=
+    // Para páginas redirigimos a /login, guardando el destino en ?next= (sin base)
     const url = abs(req, '/login');
-    url.searchParams.set('next', path);
+    url.searchParams.set('next', path); // ej: /admin
     return NextResponse.redirect(url);
   }
 
-  // Si hay sesión y viene a /login o /register, mandalo al dashboard
+  // Si hay sesión y viene a /login o /register, mandalo al dashboard (o donde prefieras)
   if (token && (path === '/login' || path === '/register')) {
     return NextResponse.redirect(abs(req, '/dashboard'));
   }

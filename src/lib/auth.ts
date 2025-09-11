@@ -130,6 +130,11 @@ export function canEdit(role: Role) {
   return role !== 'operator';
 }
 
+/** true si es admin. Útil para gating rápido en UI. */
+export function isAdmin(role: Role) {
+  return role === 'admin';
+}
+
 /** true si es labManager o admin (quedó para usos futuros más finos). */
 export function isManagerOrAdmin(role: Role) {
   return role === 'labManager' || role === 'admin';
@@ -146,6 +151,22 @@ export async function requireCanMutate(): Promise<{
 }> {
   const auth = await requireAuth();
   if (!canEdit(auth.role)) {
+    throw Object.assign(new Error('Forbidden'), { status: 403 });
+  }
+  return auth;
+}
+
+/**
+ * Requiere sesión válida y rol admin.
+ * Lanza 401 si no hay sesión y 403 si el usuario no es admin.
+ */
+export async function requireAdmin(): Promise<{
+  id: string;
+  email: string;
+  role: Role;
+}> {
+  const auth = await requireAuth();
+  if (auth.role !== 'admin') {
     throw Object.assign(new Error('Forbidden'), { status: 403 });
   }
   return auth;
