@@ -6,6 +6,7 @@ import SensorActuatorForm, { type SensorActuatorFormValues } from '../components
 import ProjectForm, { type ProjectFormValues, type SimpleItem } from '../components/ProjectForm';
 import SensorDetailsModal from '../components/SensorDetailsModal';
 import ActuatorDetailsModal from '../components/ActuatorDetailsModal';
+import ProjectDetailsModal from '../components/ProjectDetailsModal';
 
 type Item = { id: string; name: string };
 type Role = 'operator' | 'labManager' | 'admin';
@@ -43,6 +44,8 @@ export default function DashboardPage() {
   const [selectedSensorId, setSelectedSensorId] = useState<string | null>(null);
   const [openActuatorDetails, setOpenActuatorDetails] = useState(false);
   const [selectedActuatorId, setSelectedActuatorId] = useState<string | null>(null);
+  const [openProjectDetails, setOpenProjectDetails] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
   // ------- CARGA: Proyectos / Sensores / Actuadores -------
   const loadProjects = async () => {
@@ -267,13 +270,26 @@ export default function DashboardPage() {
   const sensoresSimple: SimpleItem[] = sensores.map(s => ({ id: Number(s.id), name: s.name }));
   const actuadoresSimple: SimpleItem[] = actuadores.map(a => ({ id: Number(a.id), name: a.name }));
 
-  // NUEVO: abrir modal de detalle al clickear nombre del sensor
+  // NUEVO: abrir modal de detalle al clickear nombre del elemento
   const handleViewSensor = (id: string) => {
     setSelectedSensorId(id);
     setOpenSensorDetails(true);
   };
   const handleViewActuator = (id: string) => {
     setSelectedActuatorId(id);
+    setOpenActuatorDetails(true);
+  };
+  const handleViewProject = (id: string) => {
+    setSelectedProjectId(id);
+    setOpenProjectDetails(true);
+  };
+  // Abrir modales hijos desde el modal de Proyecto:
+  const openSensorFromProject = (sensorId: number) => {
+    setSelectedSensorId(String(sensorId));
+    setOpenSensorDetails(true);
+  };
+  const openActuatorFromProject = (actuatorId: number) => {
+    setSelectedActuatorId(String(actuatorId));
     setOpenActuatorDetails(true);
   };
 
@@ -293,6 +309,7 @@ export default function DashboardPage() {
             onAdd={openNewProyecto}
             onEdit={handleEditProyecto}
             onDelete={handleDeleteProyecto}
+            onView={handleViewProject}
             canCreate={canMutate}
             canEdit={canMutate}
             canDelete={canMutate}
@@ -380,6 +397,13 @@ export default function DashboardPage() {
         onClose={() => { setOpenActuatorDetails(false); setSelectedActuatorId(null); }}
         onGoProjects={(aid) => console.log('Ir a proyectos del actuador', aid)}
         onGoLogs={(aid) => console.log('Ir a registro de envíos del actuador', aid)}
+      />
+      <ProjectDetailsModal
+        open={openProjectDetails}
+        projectId={selectedProjectId}
+        onClose={() => { setOpenProjectDetails(false); setSelectedProjectId(null); }}
+        onOpenSensor={openSensorFromProject}
+        onOpenActuator={openActuatorFromProject}
       />
     </div>
   );

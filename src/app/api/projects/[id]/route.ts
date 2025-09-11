@@ -2,11 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireCanMutate } from '@/lib/auth'; // ⟵ nuevo
 
-/**
- * GET /api/projects/:id
- * Devuelve datos completos para inicializar el form:
- * { nombre, descripcion, sensorIds: number[], actuatorIds: number[] }
- */
+// GET /api/projects/:id
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -15,14 +11,15 @@ export async function GET(
   const projectId = Number(id);
   if (!Number.isInteger(projectId) || projectId <= 0) {
     return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
-    }
+  }
 
   try {
     const proj = await prisma.proyecto.findUnique({
       where: { project_id: projectId },
       include: {
-        sensores: { select: { sensorId: true } },
-        actuadores: { select: { actuadorId: true } },
+        // Para el form (ya lo tenías)
+        sensores: { select: { sensorId: true, sensor: { select: { sensor_id: true, nombre: true, unidad_de_medida: true } } } },
+        actuadores: { select: { actuadorId: true, actuador: { select: { actuator_id: true, nombre: true, unidad_de_medida: true } } } },
       },
     });
 
@@ -30,12 +27,39 @@ export async function GET(
       return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 });
     }
 
+    // Compat form
+    const sensorIds = proj.sensores.map(s => s.sensorId);
+    const actuatorIds = proj.actuadores.map(a => a.actuadorId);
+
+    // Datos para el modal
+    const sensors = proj.sensores
+      .map(s => s.sensor)
+      .filter(Boolean)
+      .map(s => ({
+        id: s!.sensor_id,
+        nombre: s!.nombre,
+        unidadMedida: s!.unidad_de_medida ?? '',
+      }));
+
+    const actuators = proj.actuadores
+      .map(a => a.actuador)
+      .filter(Boolean)
+      .map(a => ({
+        id: a!.actuator_id,
+        nombre: a!.nombre,
+        unidadMedida: a!.unidad_de_medida ?? '',
+      }));
     return NextResponse.json(
       {
+        id: proj.project_id,
         nombre: proj.nombre,
         descripcion: proj.descripcion ?? '',
-        sensorIds: proj.sensores.map(s => s.sensorId),
-        actuatorIds: proj.actuadores.map(a => a.actuadorId),
+        // Para el form:
+        sensorIds,
+        actuatorIds,
+        // Para el modal:
+        sensors,
+        actuators,
       },
       { status: 200 }
     );
