@@ -14,8 +14,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const intId = toIntId(id);
-  if (intId === null) {
+  const intId = Number(id);
+  if (!Number.isInteger(intId)) {
     return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
   }
 
@@ -29,22 +29,28 @@ export async function GET(
         unidad_de_medida: true,
         valor_min: true,
         valor_max: true,
+        estado: true,
         fuente_datos: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
     if (!a) {
       return NextResponse.json({ error: 'Actuador no encontrado' }, { status: 404 });
     }
 
-    // Normalizamos a la forma que usa el formulario (todo string donde el form hace .trim())
+    // Devolvemos floats para rango; strings donde el form hace .trim()
     return NextResponse.json({
       id: a.actuator_id,
       nombre: a.nombre,
-      descripcion: a.descripcion ?? '',
-      unidadMedida: String(a.unidad_de_medida ?? ''),
-      valorMin: String(a.valor_min ?? ''),
-      valorMax: String(a.valor_max ?? ''),
-      fuenteDatos: String(a.fuente_datos ?? ''),
+      descripcion: a.descripcion ?? null,
+      unidadMedida: a.unidad_de_medida ?? '',
+      valorMin: a.valor_min ?? null,
+      valorMax: a.valor_max ?? null,
+      estado: Boolean(a.estado),
+      fuenteDatos: a.fuente_datos ?? null,
+      createdAt: a.createdAt,
+      updatedAt: a.updatedAt,
     });
   } catch (_err: unknown) {
     return NextResponse.json({ error: 'Error del servidor', err: _err }, { status: 500 });

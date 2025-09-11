@@ -5,6 +5,7 @@ import ElementList from '../components/ElementList';
 import SensorActuatorForm, { type SensorActuatorFormValues } from '../components/SensorActuatorForm';
 import ProjectForm, { type ProjectFormValues, type SimpleItem } from '../components/ProjectForm';
 import SensorDetailsModal from '../components/SensorDetailsModal';
+import ActuatorDetailsModal from '../components/ActuatorDetailsModal';
 
 type Item = { id: string; name: string };
 type Role = 'operator' | 'labManager' | 'admin';
@@ -40,6 +41,8 @@ export default function DashboardPage() {
   // Modal de detalle de elementos
   const [openSensorDetails, setOpenSensorDetails] = useState(false);
   const [selectedSensorId, setSelectedSensorId] = useState<string | null>(null);
+  const [openActuatorDetails, setOpenActuatorDetails] = useState(false);
+  const [selectedActuatorId, setSelectedActuatorId] = useState<string | null>(null);
 
   // ------- CARGA: Proyectos / Sensores / Actuadores -------
   const loadProjects = async () => {
@@ -168,7 +171,14 @@ export default function DashboardPage() {
       return;
     }
     const d = await res.json();
-    setActuatorInitial(d);
+
+    setActuatorInitial({
+      ...d,
+      unidadMedida: d.unidadMedida ?? '',
+      fuenteDatos: d.fuenteDatos ?? '',
+      valorMin: d.valorMin !== null && d.valorMin !== undefined ? String(d.valorMin) : '',
+      valorMax: d.valorMax !== null && d.valorMax !== undefined ? String(d.valorMax) : '',
+    });
     setEditingActuatorId(id);
     setOpenActuador(true);
   };
@@ -262,6 +272,10 @@ export default function DashboardPage() {
     setSelectedSensorId(id);
     setOpenSensorDetails(true);
   };
+  const handleViewActuator = (id: string) => {
+    setSelectedActuatorId(id);
+    setOpenActuatorDetails(true);
+  };
 
   return (
     <div className="min-h-screen bg-gray-100 px-4 py-8">
@@ -304,6 +318,7 @@ export default function DashboardPage() {
             onAdd={openNewActuator}
             onEdit={handleEditActuator}
             onDelete={handleDeleteActuator}
+            onView={handleViewActuator}
             canCreate={canMutate}
             canEdit={canMutate}
             canDelete={canMutate}
@@ -358,6 +373,13 @@ export default function DashboardPage() {
           // placeholder: más adelante podemos navegar o abrir otra vista
           console.log('Ir a registro de mediciones del sensor', sid);
         }}
+      />
+      <ActuatorDetailsModal
+        open={openActuatorDetails}
+        actuatorId={selectedActuatorId}
+        onClose={() => { setOpenActuatorDetails(false); setSelectedActuatorId(null); }}
+        onGoProjects={(aid) => console.log('Ir a proyectos del actuador', aid)}
+        onGoLogs={(aid) => console.log('Ir a registro de envíos del actuador', aid)}
       />
     </div>
   );

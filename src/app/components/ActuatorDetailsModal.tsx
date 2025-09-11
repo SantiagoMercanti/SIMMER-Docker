@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-type ApiSensorAnyCase = {
-  sensor_id?: number;
-  sensorId?: number;
+type ApiActuatorAnyCase = {
+  actuator_id?: number;
+  actuatorId?: number;
   nombre: string;
   descripcion?: string | null;
 
@@ -25,7 +25,7 @@ type ApiSensorAnyCase = {
   fuente_datos?: string | null;
   fuenteDatos?: string | null;
 
-  // fechas (por si alguna ruta serializa distinto)
+  // fechas
   createdAt?: string;
   created_at?: string;
   created?: string;
@@ -34,7 +34,7 @@ type ApiSensorAnyCase = {
   updated?: string;
 };
 
-type SensorDetail = {
+type ActuatorDetail = {
   id: number;
   nombre: string;
   descripcion?: string | null;
@@ -49,35 +49,22 @@ type SensorDetail = {
 
 type Props = {
   open: boolean;
-  sensorId: string | null;
+  actuatorId: string | null;
   onClose: () => void;
-  onGoProjects?: (sensorId: number) => void;
-  onGoLogs?: (sensorId: number) => void;
+  onGoProjects?: (actuatorId: number) => void;
+  onGoLogs?: (actuatorId: number) => void; // “Registro de envíos”
 };
 
 const BASE = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
 const api = (p: string) => `${BASE}${p}`;
 
-// --- NUEVO: normalizador para aceptar camelCase y snake_case
-function normalizeSensor(data: ApiSensorAnyCase): SensorDetail {
-  const unidad =
-    data.unidad_de_medida ??
-    data.unidadMedida ??
-    '';
-
-  const valorMax =
-    (data.valor_max ?? data.valorMax ?? null) as number | null;
-
-  const valorMin =
-    (data.valor_min ?? data.valorMin ?? null) as number | null;
-
-  const fuente =
-    (data.fuente_datos ?? data.fuenteDatos ?? null) as string | null;
-
-  const id =
-    (data.sensor_id ?? data.sensorId ?? 0) as number;
-
-  // fechas en orden de preferencia
+// Normalizador (acepta camelCase/snake_case)
+function normalizeActuator(data: ApiActuatorAnyCase): ActuatorDetail {
+  const unidad = data.unidad_de_medida ?? data.unidadMedida ?? '';
+  const valorMax = (data.valor_max ?? data.valorMax ?? null) as number | null;
+  const valorMin = (data.valor_min ?? data.valorMin ?? null) as number | null;
+  const fuente = (data.fuente_datos ?? data.fuenteDatos ?? null) as string | null;
+  const id = (data.actuator_id ?? data.actuatorId ?? 0) as number;
   const cAt = data.createdAt ?? data.created_at ?? data.created;
   const uAt = data.updatedAt ?? data.updated_at ?? data.updated;
 
@@ -95,31 +82,37 @@ function normalizeSensor(data: ApiSensorAnyCase): SensorDetail {
   };
 }
 
-export default function SensorDetailsModal({
+export default function ActuatorDetailsModal({
   open,
-  sensorId,
+  actuatorId,
   onClose,
   onGoProjects,
   onGoLogs,
 }: Props) {
   const [loading, setLoading] = useState(false);
-  const [detail, setDetail] = useState<SensorDetail | null>(null);
+  const [detail, setDetail] = useState<ActuatorDetail | null>(null);
   const [localEstado, setLocalEstado] = useState<boolean | null>(null);
 
+  // Input “Valor a enviar”
+  const [sendValue, setSendValue] = useState<string>('');
+  const [sendError, setSendError] = useState<string>('');
+
   useEffect(() => {
-    if (!open || !sensorId) {
+    if (!open || !actuatorId) {
       setDetail(null);
       setLocalEstado(null);
+      setSendValue('');
+      setSendError('');
       return;
     }
     let abort = false;
     (async () => {
       try {
         setLoading(true);
-        const res = await fetch(api(`/api/sensors/${sensorId}`), { cache: 'no-store' });
-        if (!res.ok) throw new Error('No se pudo obtener el sensor');
-        const raw = (await res.json()) as ApiSensorAnyCase;
-        const norm = normalizeSensor(raw);
+        const res = await fetch(api(`/api/actuators/${actuatorId}`), { cache: 'no-store' });
+        if (!res.ok) throw new Error('No se pudo obtener el actuador');
+        const raw = (await res.json()) as ApiActuatorAnyCase;
+        const norm = normalizeActuator(raw);
         if (!abort) {
           setDetail(norm);
           setLocalEstado(Boolean(norm.estado));
@@ -131,22 +124,12 @@ export default function SensorDetailsModal({
       }
     })();
     return () => { abort = true; };
-  }, [open, sensorId]);
-
-  const valorActualConUnidad = useMemo(() => {
-    if (!detail) return '';
-    // hardcode 20 con unidad
-    const u = detail.unidad ? ` ${detail.unidad}` : '';
-    return `20${u}`;
-  }, [detail]);
+  }, [open, actuatorId]);
 
   const rangoEstable = useMemo(() => {
     if (!detail) return '—';
     const { valorMin, valorMax, unidad } = detail;
-    if (
-      typeof valorMin !== 'number' ||
-      typeof valorMax !== 'number'
-    ) return '—';
+    if (typeof valorMin !== 'number' || typeof valorMax !== 'number') return '—';
     const u = unidad ? ` ${unidad}` : '';
     return `${valorMin}${u} — ${valorMax}${u}`;
   }, [detail]);
@@ -163,13 +146,33 @@ export default function SensorDetailsModal({
     return isNaN(d.getTime()) ? '—' : d.toLocaleString();
   }, [detail]);
 
+  const handleSend = () => {
+    setSendError('');
+    const n = Number(sendValue);
+    if (sendValue.trim() === '' || Number.isNaN(n)) {
+      setSendError('Ingresá un número válido.');
+      return;
+    }
+    // Validación opcional contra el rango, si está disponible:
+    if (detail && typeof detail.valorMin === 'number' && typeof detail.valorMax === 'number') {
+      if (n < detail.valorMin || n > detail.valorMax) {
+        setSendError(`Fuera de rango (${detail.valorMin} - ${detail.valorMax}).`);
+        return;
+      }
+    }
+    // Por ahora, solo console.log del número (ej: 30)
+    console.log(n);
+    // Si querés, podés limpiar el input:
+    // setSendValue('');
+  };
+
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
       <div className="w-full max-w-2xl rounded-xl bg-white shadow-lg">
         <div className="flex items-center justify-between border-b px-5 py-4">
-          <h3 className="text-lg font-semibold text-gray-800">Detalle del Sensor</h3>
+          <h3 className="text-lg font-semibold text-gray-800">Detalle del Actuador</h3>
           <button
             onClick={onClose}
             className="rounded-md p-2 text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -184,26 +187,51 @@ export default function SensorDetailsModal({
 
           {!loading && detail && (
             <div className="space-y-3">
+              {/* 1) Nombre */}
               <div>
                 <p className="text-xs font-medium text-gray-500">Nombre</p>
                 <p className="text-gray-800">{detail.nombre}</p>
               </div>
 
+              {/* 2) Descripción */}
               <div>
                 <p className="text-xs font-medium text-gray-500">Descripción</p>
                 <p className="text-gray-800">{detail.descripcion?.trim() || '—'}</p>
               </div>
 
+              {/* 3) Valor a enviar (input + unidad + botón Enviar) */}
               <div>
-                <p className="text-xs font-medium text-gray-500">Valor actual</p>
-                <p className="text-gray-800">{valorActualConUnidad}</p>
+                <p className="text-xs font-medium text-gray-500">Valor a enviar</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    step="any"
+                    value={sendValue}
+                    onChange={(e) => setSendValue(e.target.value)}
+                    placeholder="p. ej. 30"
+                    className="w-40 px-3 py-2 border border-gray-300 text-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="text-gray-700 select-none">
+                    {detail.unidad || ''}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleSend}
+                    className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    Enviar
+                  </button>
+                </div>
+                {sendError && <p className="text-xs text-red-600 mt-1">{sendError}</p>}
               </div>
 
+              {/* 4) Rango estable */}
               <div>
                 <p className="text-xs font-medium text-gray-500">Rango estable</p>
                 <p className="text-gray-800">{rangoEstable}</p>
               </div>
 
+              {/* 5) Estado (toggle local, sin persistir aún) */}
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-medium text-gray-500">Estado</p>
@@ -227,11 +255,13 @@ export default function SensorDetailsModal({
                 </button>
               </div>
 
+              {/* 6) Fuente de datos */}
               <div>
                 <p className="text-xs font-medium text-gray-500">Fuente de datos</p>
                 <p className="font-mono text-gray-800">{detail.fuente || '—'}</p>
               </div>
 
+              {/* 7-8) Fechas */}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <p className="text-xs font-medium text-gray-500">Creado</p>
@@ -260,7 +290,7 @@ export default function SensorDetailsModal({
               onClick={() => detail && onGoLogs?.(detail.id)}
               className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              Registro de Mediciones
+              Registro de envíos
             </button>
           </div>
 
