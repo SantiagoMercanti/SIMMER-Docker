@@ -63,8 +63,45 @@ export default function Header() {
 
   return (
     <header className="w-full bg-blue-800 text-white shadow-md px-6 py-3 flex items-center justify-between">
-      {/* Izquierda */}
+      {/* Izquierda: SIMMER */}
+      <button
+        onClick={() => router.push(`${BASE}/dashboard`)}
+        className="text-2xl tracking-wider text-white hover:text-gray-300 focus:outline-none"
+        aria-label="Ir al Dashboard"
+        type="button"
+      >
+        S I M M E R
+      </button>
+
+      {/* Derecha: Admin (si es admin) y Salir */}
       <div className="flex items-center gap-3">
+        {!loading && role === 'admin' && (
+          <button
+            onClick={() => router.push(`${BASE}/admin`)}
+            type="button"
+            className="inline-flex items-center gap-2 bg-blue-700 hover:bg-blue-600 px-3 py-2 rounded-md transition text-sm font-medium"
+            title="Ir a Admin"
+          >
+            {/* SVG escudo */}
+            <svg
+              aria-hidden="true"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              className="opacity-90"
+            >
+              <path
+                d="M12 3l7 3v6c0 4.418-3.582 8-7 8s-7-3.582-7-8V6l7-3z"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span>Admin</span>
+          </button>
+        )}
+
         <button
           onClick={handleLogout}
           type="button"
@@ -98,44 +135,7 @@ export default function Header() {
           </svg>
           <span>Salir</span>
         </button>
-
-        {!loading && role === 'admin' && (
-          <button
-            onClick={() => router.push(`${BASE}/admin`)}
-            type="button"
-            className="inline-flex items-center gap-2 bg-blue-700 hover:bg-blue-600 px-3 py-2 rounded-md transition text-sm font-medium"
-            title="Ir a Admin"
-          >
-            {/* SVG escudo */}
-            <svg
-              aria-hidden="true"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              className="opacity-90"
-            >
-              <path
-                d="M12 3l7 3v6c0 4.418-3.582 8-7 8s-7-3.582-7-8V6l7-3z"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span>Admin</span>
-          </button>
-        )}
       </div>
-
-      {/* Derecha */}
-      <button
-        onClick={() => router.push(`${BASE}/dashboard`)}
-        className="text-2xl tracking-wider text-white hover:text-gray-300 focus:outline-none"
-        aria-label="Ir al Dashboard"
-        type="button"
-      >
-        S I M M E R
-      </button>
     </header>
   );
 }
