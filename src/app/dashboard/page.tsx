@@ -7,6 +7,7 @@ import ProjectForm, { type ProjectFormValues, type SimpleItem } from '../compone
 import SensorDetailsModal from '../components/SensorDetailsModal';
 import ActuatorDetailsModal from '../components/ActuatorDetailsModal';
 import ProjectDetailsModal from '../components/ProjectDetailsModal';
+import Header from '../components/Header';
 
 type Item = { id: string; name: string };
 type Role = 'operator' | 'labManager' | 'admin';
@@ -294,117 +295,120 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 px-4 py-8">
-      <div className="mx-auto max-w-7xl">
-        <header className="mb-6">
-          <h1 className="text-3xl font-bold text-blue-600 tracking-wide">Dashboard</h1>
-          <p className="text-gray-600">Administrá proyectos, sensores y actuadores.</p>
-        </header>
+    <>
+      <Header />
+      <div className="min-h-screen bg-gray-100 px-4 py-8">
+        <div className="mx-auto max-w-7xl">
+          <header className="mb-6">
+            <h1 className="text-3xl font-bold text-blue-600 tracking-wide">Dashboard</h1>
+            <p className="text-gray-600">Administrá proyectos, sensores y actuadores.</p>
+          </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <ElementList
-            title="Proyectos"
-            items={proyectos}
-            addLabel={loading.proj ? 'Cargando...' : 'Nuevo proyecto'}
-            onAdd={openNewProyecto}
-            onEdit={handleEditProyecto}
-            onDelete={handleDeleteProyecto}
-            onView={handleViewProject}
-            canCreate={canMutate}
-            canEdit={canMutate}
-            canDelete={canMutate}
-          />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <ElementList
+              title="Proyectos"
+              items={proyectos}
+              addLabel={loading.proj ? 'Cargando...' : 'Nuevo proyecto'}
+              onAdd={openNewProyecto}
+              onEdit={handleEditProyecto}
+              onDelete={handleDeleteProyecto}
+              onView={handleViewProject}
+              canCreate={canMutate}
+              canEdit={canMutate}
+              canDelete={canMutate}
+            />
 
-          <ElementList
-            title="Sensores"
-            items={sensores}
-            addLabel={loading.sens ? 'Cargando...' : 'Nuevo sensor'}
-            onAdd={openNewSensor}
-            onEdit={handleEditSensor}
-            onDelete={handleDeleteSensor}
-            onView={handleViewSensor}
-            canCreate={canMutate}
-            canEdit={canMutate}
-            canDelete={canMutate}
-          />
+            <ElementList
+              title="Sensores"
+              items={sensores}
+              addLabel={loading.sens ? 'Cargando...' : 'Nuevo sensor'}
+              onAdd={openNewSensor}
+              onEdit={handleEditSensor}
+              onDelete={handleDeleteSensor}
+              onView={handleViewSensor}
+              canCreate={canMutate}
+              canEdit={canMutate}
+              canDelete={canMutate}
+            />
 
-          <ElementList
-            title="Actuadores"
-            items={actuadores}
-            addLabel={loading.act ? 'Cargando...' : 'Nuevo actuador'}
-            onAdd={openNewActuator}
-            onEdit={handleEditActuator}
-            onDelete={handleDeleteActuator}
-            onView={handleViewActuator}
-            canCreate={canMutate}
-            canEdit={canMutate}
-            canDelete={canMutate}
-          />
+            <ElementList
+              title="Actuadores"
+              items={actuadores}
+              addLabel={loading.act ? 'Cargando...' : 'Nuevo actuador'}
+              onAdd={openNewActuator}
+              onEdit={handleEditActuator}
+              onDelete={handleDeleteActuator}
+              onView={handleViewActuator}
+              canCreate={canMutate}
+              canEdit={canMutate}
+              canDelete={canMutate}
+            />
+          </div>
         </div>
+
+        {/* MODAL: Sensor */}
+        <SensorActuatorForm
+          asModal
+          open={openSensor}
+          onRequestClose={() => { setOpenSensor(false); setEditingSensorId(null); setSensorInitial(undefined); }}
+          tipo="sensor"
+          initialValues={editingSensorId ? sensorInitial : undefined}
+          onCancel={() => { setOpenSensor(false); setEditingSensorId(null); setSensorInitial(undefined); }}
+          onSubmit={submitSensor}
+        />
+
+        {/* MODAL: Actuador */}
+        <SensorActuatorForm
+          asModal
+          open={openActuador}
+          onRequestClose={() => { setOpenActuador(false); setEditingActuatorId(null); setActuatorInitial(undefined); }}
+          tipo="actuador"
+          initialValues={editingActuatorId ? actuatorInitial : undefined}
+          onCancel={() => { setOpenActuador(false); setEditingActuatorId(null); setActuatorInitial(undefined); }}
+          onSubmit={submitActuador}
+        />
+
+        {/* MODAL: Proyecto */}
+        <ProjectForm
+          asModal
+          open={openProyecto}
+          onRequestClose={() => { setOpenProyecto(false); setEditingProyectoId(null); setProyectoInitial(undefined); }}
+          initialValues={editingProyectoId ? proyectoInitial : undefined}
+          sensores={sensoresSimple}
+          actuadores={actuadoresSimple}
+          onCancel={() => { setOpenProyecto(false); setEditingProyectoId(null); setProyectoInitial(undefined); }}
+          onSubmit={submitProyecto}
+        />
+
+        {/* NUEVO: MODAL DETALLE SENSOR */}
+        <SensorDetailsModal
+          open={openSensorDetails}
+          sensorId={selectedSensorId}
+          onClose={() => { setOpenSensorDetails(false); setSelectedSensorId(null); }}
+          onGoProjects={(sid) => {
+            // placeholder: más adelante podemos navegar o abrir otra vista
+            console.log('Ir a proyectos del sensor', sid);
+          }}
+          onGoLogs={(sid) => {
+            // placeholder: más adelante podemos navegar o abrir otra vista
+            console.log('Ir a registro de mediciones del sensor', sid);
+          }}
+        />
+        <ActuatorDetailsModal
+          open={openActuatorDetails}
+          actuatorId={selectedActuatorId}
+          onClose={() => { setOpenActuatorDetails(false); setSelectedActuatorId(null); }}
+          onGoProjects={(aid) => console.log('Ir a proyectos del actuador', aid)}
+          onGoLogs={(aid) => console.log('Ir a registro de envíos del actuador', aid)}
+        />
+        <ProjectDetailsModal
+          open={openProjectDetails}
+          projectId={selectedProjectId}
+          onClose={() => { setOpenProjectDetails(false); setSelectedProjectId(null); }}
+          onOpenSensor={openSensorFromProject}
+          onOpenActuator={openActuatorFromProject}
+        />
       </div>
-
-      {/* MODAL: Sensor */}
-      <SensorActuatorForm
-        asModal
-        open={openSensor}
-        onRequestClose={() => { setOpenSensor(false); setEditingSensorId(null); setSensorInitial(undefined); }}
-        tipo="sensor"
-        initialValues={editingSensorId ? sensorInitial : undefined}
-        onCancel={() => { setOpenSensor(false); setEditingSensorId(null); setSensorInitial(undefined); }}
-        onSubmit={submitSensor}
-      />
-
-      {/* MODAL: Actuador */}
-      <SensorActuatorForm
-        asModal
-        open={openActuador}
-        onRequestClose={() => { setOpenActuador(false); setEditingActuatorId(null); setActuatorInitial(undefined); }}
-        tipo="actuador"
-        initialValues={editingActuatorId ? actuatorInitial : undefined}
-        onCancel={() => { setOpenActuador(false); setEditingActuatorId(null); setActuatorInitial(undefined); }}
-        onSubmit={submitActuador}
-      />
-
-      {/* MODAL: Proyecto */}
-      <ProjectForm
-        asModal
-        open={openProyecto}
-        onRequestClose={() => { setOpenProyecto(false); setEditingProyectoId(null); setProyectoInitial(undefined); }}
-        initialValues={editingProyectoId ? proyectoInitial : undefined}
-        sensores={sensoresSimple}
-        actuadores={actuadoresSimple}
-        onCancel={() => { setOpenProyecto(false); setEditingProyectoId(null); setProyectoInitial(undefined); }}
-        onSubmit={submitProyecto}
-      />
-
-      {/* NUEVO: MODAL DETALLE SENSOR */}
-      <SensorDetailsModal
-        open={openSensorDetails}
-        sensorId={selectedSensorId}
-        onClose={() => { setOpenSensorDetails(false); setSelectedSensorId(null); }}
-        onGoProjects={(sid) => {
-          // placeholder: más adelante podemos navegar o abrir otra vista
-          console.log('Ir a proyectos del sensor', sid);
-        }}
-        onGoLogs={(sid) => {
-          // placeholder: más adelante podemos navegar o abrir otra vista
-          console.log('Ir a registro de mediciones del sensor', sid);
-        }}
-      />
-      <ActuatorDetailsModal
-        open={openActuatorDetails}
-        actuatorId={selectedActuatorId}
-        onClose={() => { setOpenActuatorDetails(false); setSelectedActuatorId(null); }}
-        onGoProjects={(aid) => console.log('Ir a proyectos del actuador', aid)}
-        onGoLogs={(aid) => console.log('Ir a registro de envíos del actuador', aid)}
-      />
-      <ProjectDetailsModal
-        open={openProjectDetails}
-        projectId={selectedProjectId}
-        onClose={() => { setOpenProjectDetails(false); setSelectedProjectId(null); }}
-        onOpenSensor={openSensorFromProject}
-        onOpenActuator={openActuatorFromProject}
-      />
-    </div>
+    </>
   );
 }
