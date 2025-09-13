@@ -50,7 +50,7 @@ export default function ElementList({
       {items.length === 0 ? (
         <p className="text-sm text-gray-500">No hay elementos todavía.</p>
       ) : (
-        <ul className="divide-y divide-gray-200">
+        <ul className="divide-y divide-gray-200 max-h-[50vh] overflow-y-auto">
           {items.map((item) => (
             <li key={item.id} className="flex items-center justify-between py-3">
               {onView ? (

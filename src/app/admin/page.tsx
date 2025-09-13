@@ -18,9 +18,9 @@ export default async function AdminPage() {
 
   // admin: render normal
   return (
-    <>
+    <div className="min-h-screen flex flex-col">
       <Header />
-      <div className="min-h-screen bg-gray-100 px-4 py-8">
+      <main className="flex-1 bg-gray-100 px-4 py-8 overflow-y-auto">
         <div className="mx-auto max-w-7xl">
           <header className="mb-6">
             <h1 className="text-3xl font-bold text-blue-600 tracking-wide">
@@ -35,7 +35,7 @@ export default async function AdminPage() {
             <AdminUserTable />
           </section>
         </div>
-      </div>
-    </>
+      </main>
+    </div>
   );
 }

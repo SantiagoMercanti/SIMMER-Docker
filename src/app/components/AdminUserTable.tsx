@@ -144,7 +144,7 @@ export default function AdminUserTable() {
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
       <table className="min-w-full border border-gray-200 text-sm bg-gray-200">
         <thead>
           <tr className="bg-gray-100 text-gray-700 uppercase text-center">

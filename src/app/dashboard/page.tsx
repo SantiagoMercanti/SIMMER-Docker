@@ -118,7 +118,7 @@ export default function DashboardPage() {
     }
     const d = await res.json();
 
-    // ⬇️ Normalizá a strings lo que el form espera como texto
+    // Normalizá a strings lo que el form espera como texto
     setSensorInitial({
       ...d,
       unidadMedida: d.unidadMedida ?? '',
@@ -271,33 +271,17 @@ export default function DashboardPage() {
   const sensoresSimple: SimpleItem[] = sensores.map(s => ({ id: Number(s.id), name: s.name }));
   const actuadoresSimple: SimpleItem[] = actuadores.map(a => ({ id: Number(a.id), name: a.name }));
 
-  // NUEVO: abrir modal de detalle al clickear nombre del elemento
-  const handleViewSensor = (id: string) => {
-    setSelectedSensorId(id);
-    setOpenSensorDetails(true);
-  };
-  const handleViewActuator = (id: string) => {
-    setSelectedActuatorId(id);
-    setOpenActuatorDetails(true);
-  };
-  const handleViewProject = (id: string) => {
-    setSelectedProjectId(id);
-    setOpenProjectDetails(true);
-  };
-  // Abrir modales hijos desde el modal de Proyecto:
-  const openSensorFromProject = (sensorId: number) => {
-    setSelectedSensorId(String(sensorId));
-    setOpenSensorDetails(true);
-  };
-  const openActuatorFromProject = (actuatorId: number) => {
-    setSelectedActuatorId(String(actuatorId));
-    setOpenActuatorDetails(true);
-  };
+  // Abrir modales de detalle
+  const handleViewSensor = (id: string) => { setSelectedSensorId(id); setOpenSensorDetails(true); };
+  const handleViewActuator = (id: string) => { setSelectedActuatorId(id); setOpenActuatorDetails(true); };
+  const handleViewProject = (id: string) => { setSelectedProjectId(id); setOpenProjectDetails(true); };
+  const openSensorFromProject = (sensorId: number) => { setSelectedSensorId(String(sensorId)); setOpenSensorDetails(true); };
+  const openActuatorFromProject = (actuatorId: number) => { setSelectedActuatorId(String(actuatorId)); setOpenActuatorDetails(true); };
 
   return (
-    <>
+    <div className="min-h-screen flex flex-col">
       <Header />
-      <div className="min-h-screen bg-gray-100 px-4 py-8">
+      <main className="flex-1 bg-gray-100 px-4 py-8 overflow-y-auto">
         <div className="mx-auto max-w-7xl">
           <header className="mb-6">
             <h1 className="text-3xl font-bold text-blue-600 tracking-wide">Dashboard</h1>
@@ -380,7 +364,7 @@ export default function DashboardPage() {
           onSubmit={submitProyecto}
         />
 
-        {/* NUEVO: MODAL DETALLE SENSOR */}
+        {/* DETALLES */}
         <SensorDetailsModal
           open={openSensorDetails}
           sensorId={selectedSensorId}
@@ -408,7 +392,7 @@ export default function DashboardPage() {
           onOpenSensor={openSensorFromProject}
           onOpenActuator={openActuatorFromProject}
         />
-      </div>
-    </>
+      </main>
+    </div>
   );
 }
