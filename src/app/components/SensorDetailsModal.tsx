@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
+/** Roles permitidos en UI */
+type Role = 'operator' | 'labManager' | 'admin';
+
 type ApiSensorAnyCase = {
   sensor_id?: number;
   sensorId?: number;
@@ -58,24 +61,18 @@ type Props = {
 const BASE = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
 const api = (p: string) => `${BASE}${p}`;
 
-// --- NUEVO: normalizador para aceptar camelCase y snake_case
+/** --- Helpers CLIENT-SAFE --- */
+function isManagerOrAdmin(role: Role) {
+  return role === 'labManager' || role === 'admin';
+}
+
+/** --- Normalizador API (acepta camelCase y snake_case) --- */
 function normalizeSensor(data: ApiSensorAnyCase): SensorDetail {
-  const unidad =
-    data.unidad_de_medida ??
-    data.unidadMedida ??
-    '';
-
-  const valorMax =
-    (data.valor_max ?? data.valorMax ?? null) as number | null;
-
-  const valorMin =
-    (data.valor_min ?? data.valorMin ?? null) as number | null;
-
-  const fuente =
-    (data.fuente_datos ?? data.fuenteDatos ?? null) as string | null;
-
-  const id =
-    (data.sensor_id ?? data.sensorId ?? 0) as number;
+  const unidad = data.unidad_de_medida ?? data.unidadMedida ?? '';
+  const valorMax = (data.valor_max ?? data.valorMax ?? null) as number | null;
+  const valorMin = (data.valor_min ?? data.valorMin ?? null) as number | null;
+  const fuente = (data.fuente_datos ?? data.fuenteDatos ?? null) as string | null;
+  const id = (data.sensor_id ?? data.sensorId ?? 0) as number;
 
   // fechas en orden de preferencia
   const cAt = data.createdAt ?? data.created_at ?? data.created;
@@ -105,7 +102,36 @@ export default function SensorDetailsModal({
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState<SensorDetail | null>(null);
   const [localEstado, setLocalEstado] = useState<boolean | null>(null);
+  const [role, setRole] = useState<Role>('operator'); // default
 
+  // Traer el rol real desde el server (DB) usando tu endpoint /api/me
+  useEffect(() => {
+    if (!open) return; // solo cuando el modal se abre
+    let abort = false;
+    (async () => {
+      try {
+        const res = await fetch(api('/api/me'), { cache: 'no-store' });
+        if (!res.ok) {
+          if (!abort) setRole('operator');
+          return;
+        }
+        const me = (await res.json()) as { role?: string };
+        const r = me.role;
+        if (!abort) {
+          setRole(r === 'admin' || r === 'labManager' ? (r as Role) : 'operator');
+        }
+      } catch {
+        if (!abort) setRole('operator');
+      }
+    })();
+    return () => {
+      abort = true;
+    };
+  }, [open]);
+
+  const canSeeSensitive = isManagerOrAdmin(role);
+
+  // Cargar detalle del sensor
   useEffect(() => {
     if (!open || !sensorId) {
       setDetail(null);
@@ -204,33 +230,37 @@ export default function SensorDetailsModal({
                 <p className="text-gray-800">{rangoEstable}</p>
               </div>
 
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium text-gray-500">Estado</p>
-                  <p className="text-gray-800">{localEstado ? 'Encendido' : 'Apagado'}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setLocalEstado((s) => !s)}
-                  className={[
-                    'relative inline-flex h-6 w-11 items-center rounded-full transition',
-                    localEstado ? 'bg-green-500' : 'bg-gray-300',
-                  ].join(' ')}
-                  aria-pressed={localEstado ? 'true' : 'false'}
-                >
-                  <span
+              {canSeeSensitive && (
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500">Estado</p>
+                    <p className="text-gray-800">{localEstado ? 'Encendido' : 'Apagado'}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLocalEstado((s) => !s)}
                     className={[
-                      'inline-block h-5 w-5 transform rounded-full bg-white transition',
-                      localEstado ? 'translate-x-5' : 'translate-x-1',
+                      'relative inline-flex h-6 w-11 items-center rounded-full transition',
+                      localEstado ? 'bg-green-500' : 'bg-gray-300',
                     ].join(' ')}
-                  />
-                </button>
-              </div>
+                    aria-pressed={localEstado ? 'true' : 'false'}
+                  >
+                    <span
+                      className={[
+                        'inline-block h-5 w-5 transform rounded-full bg-white transition',
+                        localEstado ? 'translate-x-5' : 'translate-x-1',
+                      ].join(' ')}
+                    />
+                  </button>
+                </div>
+              )}
 
-              <div>
-                <p className="text-xs font-medium text-gray-500">Fuente de datos</p>
-                <p className="font-mono text-gray-800">{detail.fuente || '—'}</p>
-              </div>
+              {canSeeSensitive && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500">Fuente de datos</p>
+                  <p className="font-mono text-gray-800">{detail.fuente || '—'}</p>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>

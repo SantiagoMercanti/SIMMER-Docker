@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
+type Role = 'operator' | 'labManager' | 'admin';
+
 type ApiActuatorAnyCase = {
   actuator_id?: number;
   actuatorId?: number;
@@ -58,6 +60,10 @@ type Props = {
 const BASE = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
 const api = (p: string) => `${BASE}${p}`;
 
+function isManagerOrAdmin(role: Role) {
+  return role === 'labManager' || role === 'admin';
+}
+
 // Normalizador (acepta camelCase/snake_case)
 function normalizeActuator(data: ApiActuatorAnyCase): ActuatorDetail {
   const unidad = data.unidad_de_medida ?? data.unidadMedida ?? '';
@@ -96,6 +102,33 @@ export default function ActuatorDetailsModal({
   // Input “Valor a enviar”
   const [sendValue, setSendValue] = useState<string>('');
   const [sendError, setSendError] = useState<string>('');
+
+  // Rol real desde el server
+  const [role, setRole] = useState<Role>('operator');
+  const canSeeSensitive = isManagerOrAdmin(role);
+
+  // Traer rol con /api/me cuando se abre el modal
+  useEffect(() => {
+    if (!open) return;
+    let abort = false;
+    (async () => {
+      try {
+        const res = await fetch(api('/api/me'), { cache: 'no-store' });
+        if (!res.ok) {
+          if (!abort) setRole('operator');
+          return;
+        }
+        const me = (await res.json()) as { role?: string };
+        const r = me.role;
+        if (!abort) {
+          setRole(r === 'admin' || r === 'labManager' ? (r as Role) : 'operator');
+        }
+      } catch {
+        if (!abort) setRole('operator');
+      }
+    })();
+    return () => { abort = true; };
+  }, [open]);
 
   useEffect(() => {
     if (!open || !actuatorId) {
@@ -199,31 +232,33 @@ export default function ActuatorDetailsModal({
                 <p className="text-gray-800">{detail.descripcion?.trim() || '—'}</p>
               </div>
 
-              {/* 3) Valor a enviar (input + unidad + botón Enviar) */}
-              <div>
-                <p className="text-xs font-medium text-gray-500">Valor a enviar</p>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    step="any"
-                    value={sendValue}
-                    onChange={(e) => setSendValue(e.target.value)}
-                    placeholder="p. ej. 30"
-                    className="w-40 px-3 py-2 border border-gray-300 text-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <span className="text-gray-700 select-none">
-                    {detail.unidad || ''}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleSend}
-                    className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    Enviar
-                  </button>
+              {/* 3) Valor a enviar (solo labManager/admin) */}
+              {canSeeSensitive && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500">Valor a enviar</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      step="any"
+                      value={sendValue}
+                      onChange={(e) => setSendValue(e.target.value)}
+                      placeholder="p. ej. 30"
+                      className="w-40 px-3 py-2 border border-gray-300 text-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="text-gray-700 select-none">
+                      {detail.unidad || ''}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleSend}
+                      className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      Enviar
+                    </button>
+                  </div>
+                  {sendError && <p className="text-xs text-red-600 mt-1">{sendError}</p>}
                 </div>
-                {sendError && <p className="text-xs text-red-600 mt-1">{sendError}</p>}
-              </div>
+              )}
 
               {/* 4) Rango estable */}
               <div>
@@ -231,35 +266,39 @@ export default function ActuatorDetailsModal({
                 <p className="text-gray-800">{rangoEstable}</p>
               </div>
 
-              {/* 5) Estado (toggle local, sin persistir aún) */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium text-gray-500">Estado</p>
-                  <p className="text-gray-800">{localEstado ? 'Encendido' : 'Apagado'}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setLocalEstado((s) => !s)}
-                  className={[
-                    'relative inline-flex h-6 w-11 items-center rounded-full transition',
-                    localEstado ? 'bg-green-500' : 'bg-gray-300',
-                  ].join(' ')}
-                  aria-pressed={localEstado ? 'true' : 'false'}
-                >
-                  <span
+              {/* 5) Estado (solo labManager/admin) */}
+              {canSeeSensitive && (
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500">Estado</p>
+                    <p className="text-gray-800">{localEstado ? 'Encendido' : 'Apagado'}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLocalEstado((s) => !s)}
                     className={[
-                      'inline-block h-5 w-5 transform rounded-full bg-white transition',
-                      localEstado ? 'translate-x-5' : 'translate-x-1',
+                      'relative inline-flex h-6 w-11 items-center rounded-full transition',
+                      localEstado ? 'bg-green-500' : 'bg-gray-300',
                     ].join(' ')}
-                  />
-                </button>
-              </div>
+                    aria-pressed={localEstado ? 'true' : 'false'}
+                  >
+                    <span
+                      className={[
+                        'inline-block h-5 w-5 transform rounded-full bg-white transition',
+                        localEstado ? 'translate-x-5' : 'translate-x-1',
+                      ].join(' ')}
+                    />
+                  </button>
+                </div>
+              )}
 
-              {/* 6) Fuente de datos */}
-              <div>
-                <p className="text-xs font-medium text-gray-500">Fuente de datos</p>
-                <p className="font-mono text-gray-800">{detail.fuente || '—'}</p>
-              </div>
+              {/* 6) Fuente de datos (solo labManager/admin) */}
+              {canSeeSensitive && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500">Fuente de datos</p>
+                  <p className="font-mono text-gray-800">{detail.fuente || '—'}</p>
+                </div>
+              )}
 
               {/* 7-8) Fechas */}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
