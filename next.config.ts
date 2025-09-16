@@ -1,15 +1,19 @@
 import type { NextConfig } from "next";
 
-// Leé el base path desde el entorno:
-// - DEV en Docker: BASE_PATH no seteado (o vacío) => sin subpath
-// - PROD: BASE_PATH="/a03"
+// En dev (local sin proxy) podés dejar BASE_PATH vacío.
+// En prod (detrás de Nginx) usamos "/a03".
 const basePath = (process.env.BASE_PATH || "").trim();
 
 const nextConfig: NextConfig = {
+  // Si basePath es "", pasamos undefined para que Next no lo aplique en dev.
   basePath: basePath || undefined,
+
+  // Hacer que los assets apunten a /a03/_next/...
+  // Solo lo seteamos cuando hay basePath.
+  assetPrefix: basePath ? `${basePath}/` : undefined,
+
   output: "standalone",
-//  typescript: { ignoreBuildErrors: process.env.SKIP_TYPECHECK === "1" },
-//  eslint:     { ignoreDuringBuilds: process.env.SKIP_LINT === "1" },
+
 };
 
 export default nextConfig;
