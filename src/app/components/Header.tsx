@@ -93,16 +93,20 @@ export default function Header() {
 
       {/* Derecha: Datos de usuario + botones */}
       <div className="flex items-center gap-6">
-        {/* Texto de usuario */}
+        {/* Texto de usuario clickeable */}
         {!loading && role && (
-          <div className="flex flex-col text-right leading-tight">
+          <button
+            onClick={() => router.push('/user')}
+            className="flex flex-col text-right leading-tight hover:text-gray-300 focus:outline-none"
+            type="button"
+          >
             <span className="text-base font-medium">
               {nombre} {apellido}
             </span>
             {role !== 'admin' && (
               <span className="text-sm text-gray-300">{roleLabels[role]}</span>
             )}
-          </div>
+          </button>
         )}
 
         {/* Botones */}
