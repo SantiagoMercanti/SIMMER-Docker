@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SIMMER INGAR",
+  title: "SIMMER - INGAR",
   description: "Sistema Informático de Monitoreo Mercanti",
 };
 
