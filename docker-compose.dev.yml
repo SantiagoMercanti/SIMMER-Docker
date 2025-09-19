@@ -20,6 +20,18 @@ services:
       timeout: 5s
       retries: 30
 
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: simmer_mqtt_dev
+    restart: always
+    ports:
+      - "1883:1883"   # MQTT TCP (broker)
+      - "9001:9001"   # MQTT sobre WebSocket (para pruebas/front)
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+
   app:
     build:
       context: .
@@ -34,6 +46,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      mqtt:
+        condition: service_started
     volumes:
       - .:/app                    # hot reload
       - /app/node_modules         # evita que el node_modules del host tape al del contenedor

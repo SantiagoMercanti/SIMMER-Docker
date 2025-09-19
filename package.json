@@ -13,6 +13,7 @@
     "bcryptjs": "^3.0.2",
     "jose": "^6.1.0",
     "jsonwebtoken": "^9.0.2",
+    "mqtt": "^5.14.1",
     "next": "15.5.2",
     "react": "19.1.0",
     "react-dom": "19.1.0"
