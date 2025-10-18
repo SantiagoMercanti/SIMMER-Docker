@@ -23,13 +23,16 @@ model UserMetadata {
   nombre    String
   apellido  String
   tipo      Role     @default(operator)
-  email     String   @unique
+  email     String   // <- quitamos @unique para permitir duplicado cuando uno está inactivo
   password  String
+  activo    Boolean  @default(true) // <- soft-delete
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([tipo])
   @@index([createdAt])
+  @@index([activo])
+  @@unique([email, activo]) // permite reutilizar email si el anterior quedó inactivo
 }
 
 // --- Sensores / Actuadores / Proyectos ---
@@ -47,10 +50,12 @@ model Sensor {
   proyectos        ProyectoSensor[]
   mediciones       MedicionSensor[]
 
+  activo           Boolean           @default(true) // <- soft-delete
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
   @@index([nombre])
+  @@index([activo])
 }
 
 model Actuador {
@@ -66,10 +71,12 @@ model Actuador {
   proyectos        ProyectoActuador[]
   registros        RegistroActuador[]
 
+  activo           Boolean            @default(true)
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 
   @@index([nombre])
+  @@index([activo])
 }
 
 model Proyecto {
@@ -80,10 +87,13 @@ model Proyecto {
   sensores    ProyectoSensor[]
   actuadores  ProyectoActuador[]
 
+  estado      Boolean            @default(true)
+  activo      Boolean            @default(true)
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
   @@index([nombre])
+  @@index([activo])
 }
 
 // --- Tablas pivote (N:M) ---
