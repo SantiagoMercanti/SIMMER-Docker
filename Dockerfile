@@ -67,4 +67,9 @@ COPY --from=builder /app/prisma ./prisma
 
 EXPOSE 3000
 # Importante: aplicamos migrations pendientes y luego arrancamos el server de Next standalone
-CMD sh -lc "npx prisma migrate deploy && node server.js"
+
+# Esto es para iniciar sin seed en producción
+#CMD sh -lc "npx prisma migrate deploy && node server.js" 
+# Esto es para iniciar con seed en producción (ej: admin user)
+CMD sh -lc "npx prisma migrate deploy && npx prisma db seed && node server.js"
+
