@@ -6,17 +6,9 @@ import Header from '../components/Header';
 export default async function AdminPage() {
   const user = await getCurrentUser();
 
-  // sin sesión -> al login con next=/admin
-  if (!user) {
-    redirect('/login?next=/admin');
-  }
+  if (!user) redirect('/login?next=/admin');
+  if (user.role !== 'admin') redirect('/dashboard');
 
-  // logueado pero no admin -> al dashboard
-  if (user.role !== 'admin') {
-    redirect('/dashboard');
-  }
-
-  // admin: render normal
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -27,13 +19,11 @@ export default async function AdminPage() {
               Administración de Usuarios
             </h1>
             <p className="text-gray-600">
-              Gestioná todos los usuarios del sistema: cambiá su rol o eliminalos.
+              Gestioná todos los usuarios del sistema: cambiá su rol, eliminalos (soft-delete) o reactivalos.
             </p>
           </header>
 
-          <section className="bg-white shadow-md rounded-lg p-4">
-            <AdminUserTable />
-          </section>
+          <AdminUserTable />
         </div>
       </main>
     </div>
