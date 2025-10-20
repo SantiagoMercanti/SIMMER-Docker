@@ -36,6 +36,12 @@ export default function AdminUserTable() {
   const [deletingIds, setDeletingIds] = useState<Record<string, boolean>>({});
   const [reactivatingIds, setReactivatingIds] = useState<Record<string, boolean>>({});
 
+  // Mapa value->label para mostrar etiquetas en la tabla de inactivos
+  const roleLabelMap = useMemo(
+    () => Object.fromEntries(tipoOptions.map(o => [o.value, o.label])) as Record<Role, string>,
+    []
+  );
+
   const loadAll = useCallback(async () => {
     setLoading(true);
     setErr(null);
@@ -273,13 +279,12 @@ export default function AdminUserTable() {
                     <td className="p-3">
                       <button
                         onClick={() => handleDelete(user.id)}
-                        className="text-red-600 hover:text-red-800 disabled:opacity-60"
+                        className="text-red-600 hover:text-red-800 disabled:opacity-60 underline underline-offset-4"
                         title="Eliminar (soft-delete)"
                         aria-label={`Eliminar ${user.nombre} ${user.apellido}`}
                         disabled={isSaving || isDeleting}
                       >
-                        <span role="img" aria-hidden="true">🗑️</span>
-                        <span className="sr-only">Eliminar</span>
+                        Eliminar
                       </button>
                     </td>
                   </tr>
@@ -321,17 +326,19 @@ export default function AdminUserTable() {
                     <td className="p-3">{u.apellido}</td>
                     <td className="p-3">{u.email || 'Desconocido'}</td>
                     <td className="p-3">{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'Desconocida'}</td>
-                    <td className="p-3">{u.tipo}</td>
+                    <td className="p-3">
+                      {/* Mostrar etiqueta según mapa de roles */}
+                      {roleLabelMap[u.tipo] ?? u.tipo}
+                    </td>
                     <td className="p-3">
                       <button
                         onClick={() => handleReactivate(u.id)}
-                        className="text-green-600 hover:text-green-800 disabled:opacity-60"
+                        className="text-green-600 hover:text-green-800 disabled:opacity-60 underline underline-offset-4"
                         title="Reactivar usuario"
                         aria-label={`Reactivar ${u.nombre} ${u.apellido}`}
                         disabled={isWorking}
                       >
-                        <span role="img" aria-hidden="true">♻️</span>
-                        <span className="sr-only">Reactivar</span>
+                        Reactivar
                       </button>
                     </td>
                   </tr>
