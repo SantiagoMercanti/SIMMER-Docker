@@ -2,18 +2,20 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAdmin } from '@/lib/auth';
 
-// GET /api/users → lista segura sin password
+// GET /api/users → lista de usuarios activos
 export async function GET() {
   try {
     await requireAdmin();
 
     const rows = await prisma.userMetadata.findMany({
+      where: { activo: true },
       select: {
         id: true,
         nombre: true,
         apellido: true,
         email: true,
         tipo: true,
+        activo: true,
         createdAt: true,
         updatedAt: true,
       },
