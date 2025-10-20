@@ -135,7 +135,7 @@ export default function AdminUserTable() {
     if (!user) return;
 
     const ok = confirm(
-      `¿Eliminar al usuario "${user.nombre} ${user.apellido}"? Esta es una desactivación (soft-delete).`
+      `¿Eliminar al usuario "${user.nombre} ${user.apellido}"?`
     );
     if (!ok) return;
 

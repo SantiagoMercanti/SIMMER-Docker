@@ -9,7 +9,7 @@ function isRole(x: unknown): x is Role {
   return x === 'operator' || x === 'labManager' || x === 'admin';
 }
 
-// Email de admin protegido (no se puede eliminar/desactivar)
+// Email de admin protegido (no se puede cambiar rol ni desactivar)
 const PROTECTED_ADMIN_EMAIL = 'simmeringar@gmail.com';
 
 // PATCH /api/users/:id  → cambiar tipo (rol)
@@ -20,7 +20,7 @@ export async function PATCH(
   const { id } = await params;
 
   try {
-    await requireAdmin();
+    const acting = await requireAdmin(); // quién ejecuta
 
     const body = await req.json();
     const nuevoTipo: unknown = body?.tipo;
@@ -35,13 +35,29 @@ export async function PATCH(
     // Usuario objetivo (debe estar activo)
     const target = await prisma.userMetadata.findUnique({
       where: { id },
-      select: { id: true, tipo: true, activo: true },
+      select: { id: true, email: true, tipo: true, activo: true },
     });
 
     if (!target || !target.activo) {
       return NextResponse.json(
         { error: 'Usuario no encontrado o inactivo' },
         { status: 404 }
+      );
+    }
+
+    // Protección: no permitir cambiar el rol del admin principal por email
+    if (target.email?.toLowerCase() === PROTECTED_ADMIN_EMAIL) {
+      return NextResponse.json(
+        { error: 'No puedes cambiar el rol del administrador principal' },
+        { status: 403 }
+      );
+    }
+
+    // Protección: un admin no puede auto-degradarse (de admin a otro rol)
+    if (acting.id === target.id && target.tipo === 'admin' && nuevoTipo !== 'admin') {
+      return NextResponse.json(
+        { error: 'No puedes degradarte a ti mismo' },
+        { status: 400 }
       );
     }
 
