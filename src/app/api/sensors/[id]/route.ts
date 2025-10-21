@@ -161,8 +161,9 @@ export async function DELETE(
     // Bloquea a 'operator' y lanza 401 si no hay sesión
     await requireCanMutate();
 
-    await prisma.sensor.delete({
+    await prisma.sensor.update({
       where: { sensor_id: intId },
+      data: { activo: false },
     });
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
