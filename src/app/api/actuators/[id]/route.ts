@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { requireCanMutate } from '@/lib/auth';
+import { requireCanMutate, requireAdmin } from '@/lib/auth';
 
 function toIntId(id: string) {
   const n = Number(id);
@@ -33,10 +33,20 @@ export async function GET(
         fuente_datos: true,
         createdAt: true,
         updatedAt: true,
+        activo: true,
       },
     });
     if (!a) {
       return NextResponse.json({ error: 'Actuador no encontrado' }, { status: 404 });
+    }
+
+    // Si está inactivo, solo admin puede verlo
+    if (!a.activo) {
+      try {
+        await requireAdmin();
+      } catch {
+        return NextResponse.json({ error: 'Actuador no encontrado' }, { status: 404 }); // o 403 si preferís
+      }
     }
 
     // Devolvemos floats para rango; strings donde el form hace .trim()
@@ -122,7 +132,25 @@ export async function PATCH(
     if (unidadMedida !== undefined) data.unidad_de_medida = unidadMedida;
     if (valorMin !== undefined) data.valor_min = valorMin;
     if (valorMax !== undefined) data.valor_max = valorMax;
-    if (fuenteDatos !== undefined) data.fuente_datos = fuenteDatos; // string|null
+    if (fuenteDatos !== undefined) data.fuente_datos = fuenteDatos;
+
+    // --- Reactivación (solo admin) ---
+    if (body?.activo !== undefined) {
+      if (body.activo === true) {
+        try {
+          await requireAdmin();
+        } catch (err: unknown) {
+          const status = (err as { status?: number })?.status ?? 403;
+          const msg = status === 401 ? 'No autenticado' : 'Solo admin puede reactivar actuadores';
+          return NextResponse.json({ error: msg }, { status });
+        }
+        data.activo = true;
+      } else if (body.activo === false) {
+        return NextResponse.json({ error: 'Para desactivar use DELETE /api/actuators/:id' }, { status: 400 });
+      } else {
+        return NextResponse.json({ error: 'activo debe ser booleano' }, { status: 400 });
+      }
+    }
 
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ error: 'Sin cambios' }, { status: 400 });
@@ -161,8 +189,9 @@ export async function DELETE(
     // Bloquea a 'operator' y lanza 401 si no hay sesión
     await requireCanMutate();
 
-    await prisma.actuador.delete({
+    await prisma.actuador.update({
       where: { actuator_id: intId },
+      data: { activo: false }, // ← soft-delete
     });
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {

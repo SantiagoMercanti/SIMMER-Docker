@@ -1,10 +1,24 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireCanMutate } from '@/lib/auth';
+import { requireCanMutate, requireAdmin } from '@/lib/auth';
 
 // GET /api/actuators → [{id, name}]
-export async function GET() {
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const includeInactive = searchParams.get('includeInactive') === 'true';
+
+  if (includeInactive) {
+    try {
+      await requireAdmin();
+    } catch (err: unknown) {
+      const status = (err as { status?: number })?.status ?? 403;
+      const msg = status === 401 ? 'No autenticado' : 'No autorizado';
+      return NextResponse.json({ error: msg }, { status });
+    }
+  }
+
   const rows = await prisma.actuador.findMany({
+    where: includeInactive ? {} : { activo: true },
     select: { actuator_id: true, nombre: true },
     orderBy: { actuator_id: 'asc' },
   });

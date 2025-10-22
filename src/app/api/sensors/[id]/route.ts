@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { requireCanMutate } from '@/lib/auth';
+import { requireCanMutate, requireAdmin } from '@/lib/auth';
 
 function toIntId(id: string) {
   const n = Number(id);
@@ -33,10 +33,20 @@ export async function GET(
         fuente_datos: true,
         createdAt: true,
         updatedAt: true,
+        activo: true,
       },
     });
     if (!s) {
       return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
+    }
+
+    // Si está inactivo, solo admin puede verlo
+    if (!s.activo) {
+      try {
+        await requireAdmin();
+      } catch {
+        return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 }); // o 403 si querés
+      }
     }
 
     // Ahora devolvemos los rangos como NUMBER (float) y el resto explícito:
@@ -123,6 +133,26 @@ export async function PATCH(
     if (valorMin !== undefined) data.valor_min = valorMin;
     if (valorMax !== undefined) data.valor_max = valorMax;
     if (fuenteDatos !== undefined) data.fuente_datos = fuenteDatos; // string|null
+
+    // --- Reactivación (solo admin) ---
+    if (body?.activo !== undefined) {
+      // Permitimos únicamente setear a true por PATCH
+      if (body.activo === true) {
+        try {
+          await requireAdmin();
+        } catch (err: unknown) {
+          const status = (err as { status?: number })?.status ?? 403;
+          const msg = status === 401 ? 'No autenticado' : 'Solo admin puede reactivar sensores';
+          return NextResponse.json({ error: msg }, { status });
+        }
+        data.activo = true; // ← reactivación
+      } else if (body.activo === false) {
+        // Desactivar NO por PATCH: se hace por DELETE (soft-delete)
+        return NextResponse.json({ error: 'Para desactivar use DELETE /api/sensors/:id' }, { status: 400 });
+      } else {
+        return NextResponse.json({ error: 'activo debe ser booleano' }, { status: 400 });
+      }
+    }
 
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ error: 'Sin cambios' }, { status: 400 });
