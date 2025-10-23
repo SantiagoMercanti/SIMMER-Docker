@@ -17,8 +17,8 @@ export async function GET(req: Request) {
     }
   } const rows = await prisma.sensor.findMany({
     where: includeInactive ? {} : { activo: true },
-    select: { sensor_id: true, nombre: true },
-    orderBy: { sensor_id: 'asc' },
+    select: { sensor_id: true, nombre: true, activo: true },
+    orderBy: [{ activo: 'desc' }, { sensor_id: 'asc' }],
   });
 
   const data = rows.map(r => ({ id: String(r.sensor_id), name: r.nombre }));

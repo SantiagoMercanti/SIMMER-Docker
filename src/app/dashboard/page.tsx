@@ -61,10 +61,12 @@ export default function DashboardPage() {
     }
   };
 
-  const loadSensores = async () => {
+  const loadSensores = async (includeInactive = false) => {
     setLoading(s => ({ ...s, sens: true }));
     try {
-      const res = await fetch(api('/api/sensors'), { cache: 'no-store' });
+      const url = `${BASE}/api/sensors${includeInactive ? '?includeInactive=true' : ''}`;
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) throw new Error('No se pudieron obtener sensores');
       const data: Item[] = await res.json();
       setSensores(data);
     } finally {
@@ -72,10 +74,12 @@ export default function DashboardPage() {
     }
   };
 
-  const loadActuadores = async () => {
+  const loadActuadores = async (includeInactive = false) => {
     setLoading(s => ({ ...s, act: true }));
     try {
-      const res = await fetch(api('/api/actuators'), { cache: 'no-store' });
+      const url = `${BASE}/api/actuators${includeInactive ? '?includeInactive=true' : ''}`;
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) throw new Error('No se pudieron obtener actuadores');
       const data: Item[] = await res.json();
       setActuadores(data);
     } finally {
@@ -98,9 +102,16 @@ export default function DashboardPage() {
   useEffect(() => {
     loadRole();
     loadProjects();
-    loadSensores();
-    loadActuadores();
+    loadSensores(false);
+    loadActuadores(false);
   }, []);
+  useEffect(() => {
+    if (role === 'admin') {
+      // si es admin, volver a pedir incluyendo inactivos (activos arriba por el order del backend)
+      loadSensores(true);
+      loadActuadores(true);
+    }
+  }, [role]);
 
   // ----------------- Crear / Editar Sensor -----------------
   const openNewSensor = () => {
@@ -147,7 +158,7 @@ export default function DashboardPage() {
     setOpenSensor(false);
     setEditingSensorId(null);
     setSensorInitial(undefined);
-    await loadSensores();
+    await loadSensores(role === 'admin');
   };
 
   const handleDeleteSensor = async (id: string) => {
@@ -158,7 +169,7 @@ export default function DashboardPage() {
       alert(j?.error ?? 'No se pudo eliminar');
       return;
     }
-    await loadSensores();
+    await loadSensores(role === 'admin');
   };
 
   // ----------------- Crear / Editar Actuador -----------------
@@ -203,7 +214,7 @@ export default function DashboardPage() {
     setOpenActuador(false);
     setEditingActuatorId(null);
     setActuatorInitial(undefined);
-    await loadActuadores();
+    await loadActuadores(role === 'admin');
   };
 
   const handleDeleteActuator = async (id: string) => {
@@ -214,7 +225,7 @@ export default function DashboardPage() {
       alert(j?.error ?? 'No se pudo eliminar');
       return;
     }
-    await loadActuadores();
+    await loadActuadores(role === 'admin');
   };
 
   // ------------------------ Crear / Editar Proyecto ------------------------

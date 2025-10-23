@@ -19,8 +19,8 @@ export async function GET(req: Request) {
 
   const rows = await prisma.actuador.findMany({
     where: includeInactive ? {} : { activo: true },
-    select: { actuator_id: true, nombre: true },
-    orderBy: { actuator_id: 'asc' },
+    select: { actuator_id: true, nombre: true, activo: true },
+    orderBy: [{ activo: 'desc' }, { actuator_id: 'asc' }],     // activos arriba
   });
 
   const data = rows.map(r => ({ id: String(r.actuator_id), name: r.nombre }));
