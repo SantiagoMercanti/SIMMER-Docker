@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import ElementList from '../components/ElementList';
 import SensorActuatorForm, { type SensorActuatorFormValues } from '../components/SensorActuatorForm';
 import ProjectForm, { type ProjectFormValues, type SimpleItem } from '../components/ProjectForm';
@@ -49,10 +49,9 @@ export default function DashboardPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
   // ------- CARGA: Proyectos / Sensores / Actuadores -------
-  const loadProjects = async () => {
+  const loadProjects = useCallback(async (includeInactive = false) => {
     setLoading(s => ({ ...s, proj: true }));
     try {
-      const includeInactive = role === 'admin';
       const url = `${BASE}/api/projects${includeInactive ? '?includeInactive=true' : ''}`;
       const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) throw new Error('No se pudieron obtener proyectos');
@@ -61,9 +60,9 @@ export default function DashboardPage() {
     } finally {
       setLoading(s => ({ ...s, proj: false }));
     }
-  };
+  }, []);
 
-  const loadSensores = async (includeInactive = false) => {
+  const loadSensores = useCallback(async (includeInactive = false) => {
     setLoading(s => ({ ...s, sens: true }));
     try {
       const url = `${BASE}/api/sensors${includeInactive ? '?includeInactive=true' : ''}`;
@@ -74,9 +73,9 @@ export default function DashboardPage() {
     } finally {
       setLoading(s => ({ ...s, sens: false }));
     }
-  };
+  }, []);
 
-  const loadActuadores = async (includeInactive = false) => {
+  const loadActuadores = useCallback(async (includeInactive = false) => {
     setLoading(s => ({ ...s, act: true }));
     try {
       const url = `${BASE}/api/actuators${includeInactive ? '?includeInactive=true' : ''}`;
@@ -87,34 +86,33 @@ export default function DashboardPage() {
     } finally {
       setLoading(s => ({ ...s, act: false }));
     }
-  };
+  }, []);
 
-  // Carga del rol actual
-  const loadRole = async () => {
+  const loadRole = useCallback(async () => {
     try {
       const res = await fetch(api('/api/me'), { cache: 'no-store' });
       if (!res.ok) throw new Error('No se pudo obtener el rol');
       const j = (await res.json()) as { role?: Role };
-      setRole(j?.role ?? 'operator'); // si no vino rol, lo tratamos como operator
+      setRole(j?.role ?? 'operator');
     } catch {
-      setRole('operator'); // en error => sin permisos de mutación
+      setRole('operator');
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadRole();
-    loadProjects();
+    loadProjects(false);
     loadSensores(false);
     loadActuadores(false);
-  }, []);
+  }, [loadRole, loadProjects, loadSensores, loadActuadores]); // ← Ahora incluye las dependencias
+
   useEffect(() => {
     if (role === 'admin') {
-      // si es admin, volver a pedir incluyendo inactivos (activos arriba por el order del backend)
-      loadProjects();
+      loadProjects(true);
       loadSensores(true);
       loadActuadores(true);
     }
-  }, [role]);
+  }, [role, loadProjects, loadSensores, loadActuadores]); // ← Ahora incluye las dependencias
 
   // ----------------- Crear / Editar Sensor -----------------
   const openNewSensor = () => {
@@ -278,7 +276,7 @@ export default function DashboardPage() {
       alert(j?.error ?? 'No se pudo eliminar');
       return;
     }
-    await loadProjects();
+    await loadProjects(role === 'admin');
   };
 
   // Agregar estas funciones en page.tsx
@@ -325,7 +323,7 @@ export default function DashboardPage() {
       alert(j?.error ?? 'No se pudo reactivar');
       return;
     }
-    await loadProjects();
+    await loadProjects(true);
   };
 
   // Listas simples para el form de proyectos (checkboxes)
