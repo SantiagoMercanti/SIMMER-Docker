@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireCanMutate } from '@/lib/auth'; // ⟵ nuevo
+import { requireCanMutate, requireAdmin } from '@/lib/auth';
 
 // GET /api/projects/:id
 export async function GET(
@@ -25,6 +25,15 @@ export async function GET(
 
     if (!proj) {
       return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 });
+    }
+
+    // Si está inactivo, solo admin puede verlo
+    if (!proj.activo) {
+      try {
+        await requireAdmin();
+      } catch {
+        return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 });
+      }
     }
 
     // Compat form
@@ -73,10 +82,11 @@ export async function GET(
  * PATCH /api/projects/:id
  * Body:
  * {
- *   nombre: string;
+ *   nombre?: string;
  *   descripcion?: string | null;
  *   sensorIds?: number[];
  *   actuatorIds?: number[];
+ *   activo?: boolean;  // ← Para reactivación
  * }
  * Actualiza el proyecto y REEMPLAZA sus relaciones N:M (borra y vuelve a crear pivotes).
  */
@@ -97,68 +107,96 @@ export async function PATCH(
     const body = await req.json().catch(() => ({}));
     const {
       nombre,
-      descripcion = null,
-      sensorIds = [],
-      actuatorIds = [],
+      descripcion,
+      sensorIds,
+      actuatorIds,
+      activo,  // ← Agregado
     } = body ?? {};
 
-    if (!nombre || typeof nombre !== 'string' || !nombre.trim()) {
+    // Validaciones
+    if (nombre !== undefined && (typeof nombre !== 'string' || !nombre.trim())) {
       return NextResponse.json({ error: 'El nombre es obligatorio.' }, { status: 400 });
     }
-    if (descripcion !== null && descripcion !== undefined && typeof descripcion !== 'string') {
+    if (descripcion !== undefined && descripcion !== null && typeof descripcion !== 'string') {
       return NextResponse.json({ error: 'La descripción debe ser texto o null.' }, { status: 400 });
     }
-    if (!Array.isArray(sensorIds) || !sensorIds.every((n: number) => Number.isInteger(n) && n > 0)) {
+    if (sensorIds !== undefined && (!Array.isArray(sensorIds) || !sensorIds.every((n: number) => Number.isInteger(n) && n > 0))) {
       return NextResponse.json({ error: 'sensorIds debe ser un arreglo de enteros positivos.' }, { status: 400 });
     }
-    if (!Array.isArray(actuatorIds) || !actuatorIds.every((n: number) => Number.isInteger(n) && n > 0)) {
+    if (actuatorIds !== undefined && (!Array.isArray(actuatorIds) || !actuatorIds.every((n: number) => Number.isInteger(n) && n > 0))) {
       return NextResponse.json({ error: 'actuatorIds debe ser un arreglo de enteros positivos.' }, { status: 400 });
     }
 
+    // --- Reactivación (solo admin) ---
+    if (activo !== undefined) {
+      if (activo === true) {
+        try {
+          await requireAdmin();
+        } catch (err: unknown) {
+          const status = (err as { status?: number })?.status ?? 403;
+          const msg = status === 401 ? 'No autenticado' : 'Solo admin puede reactivar proyectos';
+          return NextResponse.json({ error: msg }, { status });
+        }
+      } else if (activo === false) {
+        return NextResponse.json({ error: 'Para desactivar use DELETE /api/projects/:id' }, { status: 400 });
+      } else {
+        return NextResponse.json({ error: 'activo debe ser booleano' }, { status: 400 });
+      }
+    }
+
     // Validaciones opcionales de existencia
-    if (sensorIds.length) {
+    if (sensorIds && sensorIds.length) {
       const countSens = await prisma.sensor.count({ where: { sensor_id: { in: sensorIds } } });
       if (countSens !== sensorIds.length) {
         return NextResponse.json({ error: 'Uno o más sensorIds no existen.' }, { status: 400 });
       }
     }
-    if (actuatorIds.length) {
+    if (actuatorIds && actuatorIds.length) {
       const countActs = await prisma.actuador.count({ where: { actuator_id: { in: actuatorIds } } });
       if (countActs !== actuatorIds.length) {
         return NextResponse.json({ error: 'Uno o más actuatorIds no existen.' }, { status: 400 });
       }
     }
 
-    // Transacción: update + reset pivotes
+    // Construir objeto de actualización
+    const updateData: Record<string, unknown> = {};
+    if (nombre !== undefined) updateData.nombre = nombre.trim();
+    if (descripcion !== undefined) updateData.descripcion = descripcion?.trim?.() ?? null;
+    if (activo !== undefined) updateData.activo = activo;
+
+    // Transacción: update + reset pivotes (solo si se enviaron)
     const updated = await prisma.$transaction(async (tx) => {
       // Asegurar existencia
       const exists = await tx.proyecto.findUnique({ where: { project_id: projectId }, select: { project_id: true } });
       if (!exists) throw new Error('NOT_FOUND');
 
-      await tx.proyecto.update({
-        where: { project_id: projectId },
-        data: {
-          nombre: nombre.trim(),
-          descripcion: descripcion?.trim?.() ?? null,
-        },
-      });
-
-      // Borrar pivotes actuales
-      await tx.proyectoSensor.deleteMany({ where: { proyectoId: projectId } });
-      await tx.proyectoActuador.deleteMany({ where: { proyectoId: projectId } });
-
-      // Crear pivotes nuevos
-      if (sensorIds.length) {
-        await tx.proyectoSensor.createMany({
-          data: sensorIds.map((sid: number) => ({ proyectoId: projectId, sensorId: sid })),
-          skipDuplicates: true,
+      // Actualizar campos básicos
+      if (Object.keys(updateData).length > 0) {
+        await tx.proyecto.update({
+          where: { project_id: projectId },
+          data: updateData,
         });
       }
-      if (actuatorIds.length) {
-        await tx.proyectoActuador.createMany({
-          data: actuatorIds.map((aid: number) => ({ proyectoId: projectId, actuadorId: aid })),
-          skipDuplicates: true,
-        });
+
+      // Si se enviaron relaciones, reemplazarlas
+      if (sensorIds !== undefined) {
+        await tx.proyectoSensor.deleteMany({ where: { proyectoId: projectId } });
+        if (sensorIds.length) {
+          await tx.proyectoSensor.createMany({
+            data: sensorIds.map((sid: number) => ({ proyectoId: projectId, sensorId: sid })),
+            skipDuplicates: true,
+          });
+        }
+      }
+
+      if (actuatorIds !== undefined) {
+        await tx.proyectoActuador.deleteMany({ where: { proyectoId: projectId } });
+        if (actuatorIds.length) {
+          await tx.proyectoActuador.createMany({
+            data: actuatorIds.map((aid: number) => ({ proyectoId: projectId, actuadorId: aid })),
+            skipDuplicates: true,
+          });
+        }
       }
 
       return tx.proyecto.findUnique({
@@ -186,8 +224,7 @@ export async function PATCH(
 
 /**
  * DELETE /api/projects/:id
- * Borra el proyecto. Con tu schema (onDelete: Cascade en pivotes) se eliminan también
- * las filas de ProyectoSensor y ProyectoActuador automáticamente.
+ * Soft-delete: marca activo=false
  */
 export async function DELETE(
   _req: Request,
@@ -203,8 +240,11 @@ export async function DELETE(
     // Bloquea a 'operator' y lanza 401 si no hay sesión
     await requireCanMutate();
 
-    await prisma.proyecto.delete({ where: { project_id: projectId } });
-    return new NextResponse(null, { status: 204 });
+    await prisma.proyecto.update({
+      where: { project_id: projectId },
+      data: { activo: false }, // ← soft-delete
+    });
+    return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const status = (err as { status?: number })?.status ?? 0;
     if (status === 401) return NextResponse.json({ error: 'No autenticado' }, { status });

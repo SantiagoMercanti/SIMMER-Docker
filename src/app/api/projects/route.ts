@@ -1,22 +1,38 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireCanMutate } from '@/lib/auth'; // ⟵ nuevo
+import { requireCanMutate, requireAdmin } from '@/lib/auth';
 
 // -------- GET /api/projects --------
-// Devuelve una lista simplificada para el dashboard: [{ id: string, name: string }]
-export async function GET() {
+// Devuelve una lista simplificada para el dashboard: [{ id: string, name: string, activo: boolean }]
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const includeInactive = searchParams.get('includeInactive') === 'true';
+
+  if (includeInactive) {
+    try {
+      await requireAdmin(); // ← solo admin puede ver inactivos
+    } catch (err: unknown) {
+      const status = (err as { status?: number })?.status ?? 403;
+      const msg = status === 401 ? 'No autenticado' : 'No autorizado';
+      return NextResponse.json({ error: msg }, { status });
+    }
+  }
+
   try {
     const proyectos = await prisma.proyecto.findMany({
+      where: includeInactive ? {} : { activo: true },
       select: {
         project_id: true,
         nombre: true,
+        activo: true,
       },
-      orderBy: { project_id: 'desc' },
+      orderBy: [{ activo: 'desc' }, { project_id: 'desc' }],
     });
 
     const items = proyectos.map((p) => ({
       id: String(p.project_id),
       name: p.nombre,
+      activo: p.activo,  // ← Agregado
     }));
 
     return NextResponse.json(items, { status: 200 });

@@ -52,7 +52,9 @@ export default function DashboardPage() {
   const loadProjects = async () => {
     setLoading(s => ({ ...s, proj: true }));
     try {
-      const res = await fetch(api('/api/projects'), { cache: 'no-store' });
+      const includeInactive = role === 'admin';
+      const url = `${BASE}/api/projects${includeInactive ? '?includeInactive=true' : ''}`;
+      const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) throw new Error('No se pudieron obtener proyectos');
       const data: Item[] = await res.json();
       setProyectos(data);
@@ -108,6 +110,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (role === 'admin') {
       // si es admin, volver a pedir incluyendo inactivos (activos arriba por el order del backend)
+      loadProjects();
       loadSensores(true);
       loadActuadores(true);
     }
@@ -310,6 +313,21 @@ export default function DashboardPage() {
     await loadActuadores(true);
   };
 
+  const handleReactivateProject = async (id: string) => {
+    if (!confirm('¿Reactivar este proyecto?')) return;
+    const res = await fetch(api(`/api/projects/${id}`), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ activo: true }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      alert(j?.error ?? 'No se pudo reactivar');
+      return;
+    }
+    await loadProjects();
+  };
+
   // Listas simples para el form de proyectos (checkboxes)
   const sensoresSimple: SimpleItem[] = sensores.map(s => ({ id: Number(s.id), name: s.name }));
   const actuadoresSimple: SimpleItem[] = actuadores.map(a => ({ id: Number(a.id), name: a.name }));
@@ -339,6 +357,7 @@ export default function DashboardPage() {
               onAdd={openNewProyecto}
               onEdit={handleEditProyecto}
               onDelete={handleDeleteProyecto}
+              onReactivate={handleReactivateProject}  // ← AGREGAR
               onView={handleViewProject}
               canCreate={canMutate}
               canEdit={canMutate}
