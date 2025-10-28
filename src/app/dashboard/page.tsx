@@ -278,6 +278,38 @@ export default function DashboardPage() {
     await loadProjects();
   };
 
+  // Agregar estas funciones en page.tsx
+
+  const handleReactivateSensor = async (id: string) => {
+    if (!confirm('¿Reactivar este sensor?')) return;
+    const res = await fetch(api(`/api/sensors/${id}`), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ activo: true }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      alert(j?.error ?? 'No se pudo reactivar');
+      return;
+    }
+    await loadSensores(true);
+  };
+
+  const handleReactivateActuator = async (id: string) => {
+    if (!confirm('¿Reactivar este actuador?')) return;
+    const res = await fetch(api(`/api/actuators/${id}`), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ activo: true }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      alert(j?.error ?? 'No se pudo reactivar');
+      return;
+    }
+    await loadActuadores(true);
+  };
+
   // Listas simples para el form de proyectos (checkboxes)
   const sensoresSimple: SimpleItem[] = sensores.map(s => ({ id: Number(s.id), name: s.name }));
   const actuadoresSimple: SimpleItem[] = actuadores.map(a => ({ id: Number(a.id), name: a.name }));
@@ -320,6 +352,7 @@ export default function DashboardPage() {
               onAdd={openNewSensor}
               onEdit={handleEditSensor}
               onDelete={handleDeleteSensor}
+              onReactivate={handleReactivateSensor}  // ← Agregado
               onView={handleViewSensor}
               canCreate={canMutate}
               canEdit={canMutate}
@@ -333,6 +366,7 @@ export default function DashboardPage() {
               onAdd={openNewActuator}
               onEdit={handleEditActuator}
               onDelete={handleDeleteActuator}
+              onReactivate={handleReactivateActuator}  // ← Agregado
               onView={handleViewActuator}
               canCreate={canMutate}
               canEdit={canMutate}

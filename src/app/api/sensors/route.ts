@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireCanMutate, requireAdmin } from '@/lib/auth';
 
-// GET /api/sensors → [{id, name}]
+// GET /api/sensors → [{id, name, activo}]
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const includeInactive = searchParams.get('includeInactive') === 'true';
@@ -15,13 +15,19 @@ export async function GET(req: Request) {
       const msg = status === 401 ? 'No autenticado' : 'No autorizado';
       return NextResponse.json({ error: msg }, { status });
     }
-  } const rows = await prisma.sensor.findMany({
+  }
+  
+  const rows = await prisma.sensor.findMany({
     where: includeInactive ? {} : { activo: true },
     select: { sensor_id: true, nombre: true, activo: true },
     orderBy: [{ activo: 'desc' }, { sensor_id: 'asc' }],
   });
 
-  const data = rows.map(r => ({ id: String(r.sensor_id), name: r.nombre }));
+  const data = rows.map(r => ({ 
+    id: String(r.sensor_id), 
+    name: r.nombre,
+    activo: r.activo  // ← Agregado
+  }));
   return NextResponse.json(data);
 }
 

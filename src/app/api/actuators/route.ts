@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireCanMutate, requireAdmin } from '@/lib/auth';
 
-// GET /api/actuators → [{id, name}]
+// GET /api/actuators → [{id, name, activo}]
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const includeInactive = searchParams.get('includeInactive') === 'true';
@@ -23,7 +23,11 @@ export async function GET(req: Request) {
     orderBy: [{ activo: 'desc' }, { actuator_id: 'asc' }],     // activos arriba
   });
 
-  const data = rows.map(r => ({ id: String(r.actuator_id), name: r.nombre }));
+  const data = rows.map(r => ({ 
+    id: String(r.actuator_id), 
+    name: r.nombre,
+    activo: r.activo  // ← Agregado
+  }));
   return NextResponse.json(data);
 }
 
