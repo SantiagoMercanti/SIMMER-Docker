@@ -3,6 +3,20 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 
+// Función para validar contraseña en el backend
+const validatePassword = (password: string): string | null => {
+  if (password.length < 8) {
+    return 'La contraseña debe tener al menos 8 caracteres';
+  }
+  if (!/[A-Z]/.test(password)) {
+    return 'La contraseña debe contener al menos una letra mayúscula';
+  }
+  if (!/[0-9]/.test(password)) {
+    return 'La contraseña debe contener al menos un número';
+  }
+  return null;
+};
+
 export async function POST(req: Request) {
   try {
     const { nombre, apellido, email, password } = await req.json();
@@ -15,8 +29,11 @@ export async function POST(req: Request) {
     if (!nombreTrim || !apellidoTrim || !emailNorm || !password) {
       return NextResponse.json({ message: 'Faltan datos obligatorios' }, { status: 400 });
     }
-    if (password.length < 6) {
-      return NextResponse.json({ message: 'La contraseña debe tener al menos 6 caracteres' }, { status: 400 });
+
+    // Validar contraseña con los nuevos requisitos
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      return NextResponse.json({ message: passwordError }, { status: 400 });
     }
 
     // ¿Existe un usuario ACTIVO con ese email? (borrado lógico respetado)

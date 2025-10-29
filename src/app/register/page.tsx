@@ -6,6 +6,20 @@ import { useRouter } from 'next/navigation';
 const BASE = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
 const api = (p: string) => `${BASE}${p}`;
 
+// Función para validar contraseña
+const validatePassword = (password: string): string | null => {
+  if (password.length < 8) {
+    return 'La contraseña debe tener al menos 8 caracteres.';
+  }
+  if (!/[A-Z]/.test(password)) {
+    return 'La contraseña debe contener al menos una letra mayúscula.';
+  }
+  if (!/[0-9]/.test(password)) {
+    return 'La contraseña debe contener al menos un número.';
+  }
+  return null;
+};
+
 export default function RegisterPage() {
   const router = useRouter();
 
@@ -35,8 +49,10 @@ export default function RegisterPage() {
       return;
     }
 
-    if (password.length < 6) {
-      setErrorMsg('La contraseña debe tener al menos 6 caracteres.');
+    // Validar contraseña con los nuevos requisitos
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      setErrorMsg(passwordError);
       return;
     }
 
@@ -146,7 +162,7 @@ export default function RegisterPage() {
               className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Mínimo 6 caracteres.
+              Mínimo 8 caracteres, una mayúscula y un número.
             </p>
           </div>
 
