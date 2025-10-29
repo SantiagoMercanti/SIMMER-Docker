@@ -10,7 +10,7 @@ export async function GET(req: Request) {
 
   if (includeInactive) {
     try {
-      await requireAdmin(); // ← solo admin puede ver inactivos
+      await requireAdmin(); // solo admin puede ver inactivos
     } catch (err: unknown) {
       const status = (err as { status?: number })?.status ?? 403;
       const msg = status === 401 ? 'No autenticado' : 'No autorizado';
@@ -32,7 +32,7 @@ export async function GET(req: Request) {
     const items = proyectos.map((p) => ({
       id: String(p.project_id),
       name: p.nombre,
-      activo: p.activo,  // ← Agregado
+      activo: p.activo,
     }));
 
     return NextResponse.json(items, { status: 200 });
@@ -43,13 +43,6 @@ export async function GET(req: Request) {
 }
 
 // -------- POST /api/projects --------
-// Body esperado:
-// {
-//   "nombre": string,
-//   "descripcion": string | null,
-//   "sensorIds": number[],
-//   "actuatorIds": number[]
-// }
 export async function POST(req: Request) {
   try {
     // Bloquea a 'operator' (y lanza 401 si no hay sesión)
@@ -70,11 +63,20 @@ export async function POST(req: Request) {
     if (descripcion !== null && descripcion !== undefined && typeof descripcion !== 'string') {
       return NextResponse.json({ error: 'La descripción debe ser texto o null.' }, { status: 400 });
     }
+    // Validar que descripción no esté vacía
+    if (!descripcion || typeof descripcion !== 'string' || !descripcion.trim()) {
+      return NextResponse.json({ error: 'La descripción es obligatoria.' }, { status: 400 });
+    }
     if (!Array.isArray(sensorIds) || !sensorIds.every((n: number) => Number.isInteger(n) && n > 0)) {
       return NextResponse.json({ error: 'sensorIds debe ser un arreglo de enteros positivos.' }, { status: 400 });
     }
     if (!Array.isArray(actuatorIds) || !actuatorIds.every((n: number) => Number.isInteger(n) && n > 0)) {
       return NextResponse.json({ error: 'actuatorIds debe ser un arreglo de enteros positivos.' }, { status: 400 });
+    }
+
+    // Validar que haya al menos un sensor o actuador
+    if (sensorIds.length === 0 && actuatorIds.length === 0) {
+      return NextResponse.json({ error: 'Debe seleccionar al menos un sensor o actuador.' }, { status: 400 });
     }
 
     // Verificación opcional de existencia (fail-fast)
@@ -95,7 +97,7 @@ export async function POST(req: Request) {
     const nuevo = await prisma.proyecto.create({
       data: {
         nombre: nombre.trim(),
-        descripcion: descripcion?.trim?.() ?? null,
+        descripcion: descripcion.trim(),
         sensores: {
           create: sensorIds.map((sid: number) => ({
             sensor: { connect: { sensor_id: sid } },

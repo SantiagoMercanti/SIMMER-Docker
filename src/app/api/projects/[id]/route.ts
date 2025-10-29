@@ -17,7 +17,7 @@ export async function GET(
     const proj = await prisma.proyecto.findUnique({
       where: { project_id: projectId },
       include: {
-        // Para el form (ya lo tenías)
+        // Para el form (ya lo tenía)
         sensores: { select: { sensorId: true, sensor: { select: { sensor_id: true, nombre: true, unidad_de_medida: true } } } },
         actuadores: { select: { actuadorId: true, actuador: { select: { actuator_id: true, nombre: true, unidad_de_medida: true } } } },
       },
@@ -78,18 +78,7 @@ export async function GET(
   }
 }
 
-/**
- * PATCH /api/projects/:id
- * Body:
- * {
- *   nombre?: string;
- *   descripcion?: string | null;
- *   sensorIds?: number[];
- *   actuatorIds?: number[];
- *   activo?: boolean;  // ← Para reactivación
- * }
- * Actualiza el proyecto y REEMPLAZA sus relaciones N:M (borra y vuelve a crear pivotes).
- */
+// PATCH /api/projects/:id
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -110,7 +99,7 @@ export async function PATCH(
       descripcion,
       sensorIds,
       actuatorIds,
-      activo,  // ← Agregado
+      activo,
     } = body ?? {};
 
     // Validaciones
@@ -120,6 +109,10 @@ export async function PATCH(
     if (descripcion !== undefined && descripcion !== null && typeof descripcion !== 'string') {
       return NextResponse.json({ error: 'La descripción debe ser texto o null.' }, { status: 400 });
     }
+    // Validar que descripción no esté vacía si se proporciona
+    if (descripcion !== undefined && (!descripcion || typeof descripcion !== 'string' || !descripcion.trim())) {
+      return NextResponse.json({ error: 'La descripción es obligatoria.' }, { status: 400 });
+    }
     if (sensorIds !== undefined && (!Array.isArray(sensorIds) || !sensorIds.every((n: number) => Number.isInteger(n) && n > 0))) {
       return NextResponse.json({ error: 'sensorIds debe ser un arreglo de enteros positivos.' }, { status: 400 });
     }
@@ -127,7 +120,14 @@ export async function PATCH(
       return NextResponse.json({ error: 'actuatorIds debe ser un arreglo de enteros positivos.' }, { status: 400 });
     }
 
-    // --- Reactivación (solo admin) ---
+    // Validar que haya al menos un sensor o actuador (si se están actualizando)
+    if (sensorIds !== undefined && actuatorIds !== undefined) {
+      if (sensorIds.length === 0 && actuatorIds.length === 0) {
+        return NextResponse.json({ error: 'Debe tener al menos un sensor o actuador.' }, { status: 400 });
+      }
+    }
+
+    // Reactivación (solo admin)
     if (activo !== undefined) {
       if (activo === true) {
         try {
@@ -161,7 +161,7 @@ export async function PATCH(
     // Construir objeto de actualización
     const updateData: Record<string, unknown> = {};
     if (nombre !== undefined) updateData.nombre = nombre.trim();
-    if (descripcion !== undefined) updateData.descripcion = descripcion?.trim?.() ?? null;
+    if (descripcion !== undefined) updateData.descripcion = descripcion.trim();
     if (activo !== undefined) updateData.activo = activo;
 
     // Transacción: update + reset pivotes (solo si se enviaron)
@@ -242,7 +242,7 @@ export async function DELETE(
 
     await prisma.proyecto.update({
       where: { project_id: projectId },
-      data: { activo: false }, // ← soft-delete
+      data: { activo: false }, // soft-delete
     });
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {

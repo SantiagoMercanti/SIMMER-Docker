@@ -97,6 +97,12 @@ export default function ProjectForm({
         const next: Record<string, string> = {};
         if (!values.nombre.trim()) next.nombre = 'El nombre es obligatorio.';
         if (!values.descripcion.trim()) next.descripcion = 'La descripción es obligatoria.';
+
+        // Validar que haya al menos un sensor o actuador
+        if (values.sensorIds.length === 0 && values.actuatorIds.length === 0) {
+            next.sensores = 'Debe seleccionar al menos un sensor o actuador.';
+        }
+
         setErrors(next);
         return Object.keys(next).length === 0;
     };
@@ -185,6 +191,9 @@ export default function ProjectForm({
                         ))
                     )}
                 </div>
+                {errors.sensores && (
+                    <p className="text-xs text-red-600 mt-1">{errors.sensores}</p>
+                )}
             </div>
 
             {/* Acciones */}
