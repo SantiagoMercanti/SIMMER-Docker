@@ -112,6 +112,7 @@ export default function SensorActuatorForm({
     const next: Record<string, string> = {};
 
     if (!values.nombre.trim()) next.nombre = 'El nombre es obligatorio.';
+    if (!values.descripcion.trim()) next.descripcion = 'La descripción es obligatoria.';
     if (!values.unidadMedida.trim()) next.unidadMedida = 'La unidad de medida es obligatoria.';
     if (!values.fuenteDatos.trim()) next.fuenteDatos = 'La fuente de datos es obligatoria.';
 
@@ -178,7 +179,11 @@ export default function SensorActuatorForm({
           placeholder="Descripción breve del elemento"
           rows={3}
           className="w-full px-3 py-2 border border-gray-300 text-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          required
         />
+        {errors.descripcion && (
+          <p className="text-xs text-red-600 mt-1">{errors.descripcion}</p>
+        )}
       </div>
 
       {/* Unidad de medida */}

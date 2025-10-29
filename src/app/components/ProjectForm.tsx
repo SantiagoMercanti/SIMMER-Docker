@@ -96,6 +96,7 @@ export default function ProjectForm({
     const validate = () => {
         const next: Record<string, string> = {};
         if (!values.nombre.trim()) next.nombre = 'El nombre es obligatorio.';
+        if (!values.descripcion.trim()) next.descripcion = 'La descripción es obligatoria.';
         setErrors(next);
         return Object.keys(next).length === 0;
     };
@@ -137,7 +138,11 @@ export default function ProjectForm({
                     onChange={handleChange('descripcion')}
                     placeholder="Descripción breve del proyecto"
                     className="w-full px-3 py-2 border border-gray-300 text-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
                 />
+                {errors.descripcion && (
+                    <p className="text-xs text-red-600 mt-1">{errors.descripcion}</p>
+                )}
             </div>
 
             {/* Sensores */}
