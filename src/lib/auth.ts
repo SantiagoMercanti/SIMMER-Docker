@@ -72,7 +72,10 @@ export async function requireAuth(): Promise<{
 
   const user =
     (userId && (await prisma.userMetadata.findUnique({ where: { id: userId } }))) ||
-    (email && (await prisma.userMetadata.findUnique({ where: { email } })));
+    (email &&
+      (await prisma.userMetadata.findUnique({
+        where: { email_activo: { email, activo: true } },
+      })));
 
   if (!user) throw Object.assign(new Error('User not found'), { status: 401 });
 

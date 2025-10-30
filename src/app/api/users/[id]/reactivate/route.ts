@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAdmin } from '@/lib/auth';
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, ctx: RouteContext<'/api/users/[id]/reactivate'>) {
   try {
     await requireAdmin();
-    const { id } = params;
+
+    const { id } = await ctx.params; // <- antes era const { id } = params;
     const body = await req.json().catch(() => ({} as { newEmail?: string }));
     const newEmail = typeof body?.newEmail === 'string'
       ? body.newEmail.trim().toLowerCase()

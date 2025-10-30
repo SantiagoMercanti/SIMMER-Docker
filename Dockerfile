@@ -54,7 +54,7 @@ RUN npm prune --omit=dev
 FROM base AS prod
 ENV NODE_ENV=production
 WORKDIR /app
-
+COPY --from=builder /app/node_modules ./node_modules
 # Copia el runtime standalone y los estáticos
 # - server.js y node_modules "slim" quedan en /.next/standalone
 COPY --from=builder /app/.next/standalone ./
