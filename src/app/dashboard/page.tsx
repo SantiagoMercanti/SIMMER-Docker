@@ -392,13 +392,14 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* MODAL: Sensor */}
+{/* MODAL: Sensor */}
         <SensorActuatorForm
           asModal
           open={openSensor}
           onRequestClose={() => { setOpenSensor(false); setEditingSensorId(null); setSensorInitial(undefined); }}
           tipo="sensor"
           initialValues={editingSensorId ? sensorInitial : undefined}
+          editingId={editingSensorId ? Number(editingSensorId) : undefined}
           onCancel={() => { setOpenSensor(false); setEditingSensorId(null); setSensorInitial(undefined); }}
           onSubmit={submitSensor}
         />
@@ -410,6 +411,7 @@ export default function DashboardPage() {
           onRequestClose={() => { setOpenActuador(false); setEditingActuatorId(null); setActuatorInitial(undefined); }}
           tipo="actuador"
           initialValues={editingActuatorId ? actuatorInitial : undefined}
+          editingId={editingActuatorId ? Number(editingActuatorId) : undefined}
           onCancel={() => { setOpenActuador(false); setEditingActuatorId(null); setActuatorInitial(undefined); }}
           onSubmit={submitActuador}
         />

@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+// Prefijo de API según entorno ('' en dev, '/a03' en prod)
+const BASE = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
+const api = (p: string) => `${BASE}${p}`;
+
 export type SensorActuatorFormValues = {
   nombre: string;
   descripcion: string;
@@ -15,18 +19,22 @@ type Props = {
   // LÓGICA DEL FORM
   tipo: 'sensor' | 'actuador';
   initialValues?: Partial<SensorActuatorFormValues>;
+  editingId?: number; // ID del sensor/actuador que se está editando (undefined si es nuevo)
   onCancel?: () => void;
   onSubmit?: (values: SensorActuatorFormValues) => void;
+  asModal?: boolean;
+  open?: boolean;
+  onRequestClose?: () => void;
+};
 
-  // MODO MODAL (opcional)
-  asModal?: boolean;           // si true, se renderiza como modal
-  open?: boolean;              // controla la visibilidad del modal
-  onRequestClose?: () => void; // cerrar por backdrop o Escape
+type ConflictData = {
+  nombres: string[];
 };
 
 export default function SensorActuatorForm({
   tipo,
   initialValues = {},
+  editingId,
   onCancel,
   onSubmit,
   asModal = false,
@@ -44,7 +52,12 @@ export default function SensorActuatorForm({
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [conflictData, setConflictData] = useState<ConflictData | null>(null);
+  const [isCheckingConflict, setIsCheckingConflict] = useState(false);
+  
   const panelRef = useRef<HTMLDivElement>(null);
+  const confirmModalRef = useRef<HTMLDivElement>(null);
 
   // --- Desestructuración para deps del efecto (arreglo recomendado) ---
   const {
@@ -68,6 +81,8 @@ export default function SensorActuatorForm({
       fuenteDatos: ivFuenteDatos,
     });
     setErrors({});
+    setShowConfirmModal(false);
+    setConflictData(null);
   }, [
     open,
     asModal,
@@ -83,7 +98,9 @@ export default function SensorActuatorForm({
   useEffect(() => {
     if (!asModal || !open) return;
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') (onRequestClose ?? onCancel)?.();
+      if (e.key === 'Escape' && !showConfirmModal) {
+        (onRequestClose ?? onCancel)?.();
+      }
     };
     document.addEventListener('keydown', handleKey);
 
@@ -95,7 +112,7 @@ export default function SensorActuatorForm({
       document.removeEventListener('keydown', handleKey);
       document.body.style.overflow = prev;
     };
-  }, [asModal, open, onRequestClose, onCancel]);
+  }, [asModal, open, showConfirmModal, onRequestClose, onCancel]);
 
   const titulo = useMemo(
     () => (initialValues?.nombre ? `Editar ${tipo}` : `Nuevo ${tipo}`),
@@ -134,13 +151,74 @@ export default function SensorActuatorForm({
     return Object.keys(next).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const checkFuenteDatosConflict = async (): Promise<boolean> => {
+    const fuenteDatos = values.fuenteDatos.trim();
+    if (!fuenteDatos) return false;
+
+    setIsCheckingConflict(true);
+    try {
+      const endpoint = tipo === 'sensor'
+        ? api('/api/sensors/check-fuente')
+        : api('/api/actuators/check-fuente');
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fuenteDatos,
+          excludeId: editingId,
+        }),
+      });
+
+      if (!response.ok) {
+        console.error('Error al verificar conflictos');
+        return false;
+      }
+
+      const data = await response.json();
+      
+      if (data.conflict) {
+        const items = tipo === 'sensor' ? data.sensors : data.actuators;
+        const nombres = items.map((item: { nombre: string }) => item.nombre);
+        setConflictData({ nombres });
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error('Error al verificar conflictos:', error);
+      return false;
+    } finally {
+      setIsCheckingConflict(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
+
+    // Verificar conflictos de fuente_datos
+    const hasConflict = await checkFuenteDatosConflict();
+    
+    if (hasConflict) {
+      setShowConfirmModal(true);
+    } else {
+      // No hay conflicto, proceder directamente
+      onSubmit?.(values);
+    }
+  };
+
+  const handleConfirmSubmit = () => {
+    setShowConfirmModal(false);
+    setConflictData(null);
     onSubmit?.(values);
   };
 
-  // CLASES: si es modal, el form se muestra "plano" (sin card)
+  const handleCancelConfirm = () => {
+    setShowConfirmModal(false);
+    setConflictData(null);
+  };
+
   const wrapperClass = asModal
     ? 'space-y-4'
     : 'bg-white shadow-md rounded-lg p-4 md:p-6 space-y-4';
@@ -186,7 +264,6 @@ export default function SensorActuatorForm({
         )}
       </div>
 
-      {/* Unidad de medida */}
       <div>
         <label className="block mb-1 text-sm text-gray-600" htmlFor="unidadMedida">
           Unidad de medida
@@ -205,7 +282,6 @@ export default function SensorActuatorForm({
         )}
       </div>
 
-      {/* Rango */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className="block mb-1 text-sm text-gray-600" htmlFor="valorMin">
@@ -242,7 +318,6 @@ export default function SensorActuatorForm({
         </div>
       </div>
 
-      {/* Fuente de datos */}
       <div>
         <label className="block mb-1 text-sm text-gray-600" htmlFor="fuenteDatos">
           Fuente de datos
@@ -261,53 +336,116 @@ export default function SensorActuatorForm({
         )}
       </div>
 
-      {/* Acciones */}
       <div className="flex items-center justify-end gap-2 pt-2">
         <button
           type="button"
           onClick={onCancel}
           className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          disabled={isCheckingConflict}
         >
           Cancelar
         </button>
         <button
           type="submit"
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={isCheckingConflict}
         >
-          Guardar
+          {isCheckingConflict ? 'Verificando...' : 'Guardar'}
         </button>
       </div>
     </form>
   );
 
-  // Si no es modal: render directo
-  if (!asModal) return formMarkup;
-
-  // En modo modal: no renderiza si está cerrado
-  if (!open) return null;
-
-  // En modo modal: overlay + panel (el form va "plano" adentro)
-  return (
+  // Modal de confirmación de conflicto
+  const confirmModalMarkup = showConfirmModal && conflictData && (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-[60] flex items-center justify-center"
       role="dialog"
       aria-modal="true"
     >
-      {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/40"
-        onClick={(onRequestClose ?? onCancel)}
+        className="absolute inset-0 bg-black/50"
+        onClick={handleCancelConfirm}
         aria-hidden="true"
       />
-
-      {/* Panel */}
+      
       <div
-        ref={panelRef}
+        ref={confirmModalRef}
         tabIndex={-1}
-        className="relative z-10 w-full max-w-2xl rounded-xl bg-white p-4 md:p-6 shadow-xl outline-none"
+        className="relative z-10 w-full max-w-md rounded-xl bg-white p-6 shadow-xl outline-none"
       >
-        {formMarkup}
+        <h4 className="text-lg font-semibold text-gray-900 mb-3">
+          Fuente de datos duplicada
+        </h4>
+        
+        <p className="text-sm text-gray-700 mb-2">
+          Este tópico está siendo utilizado por {conflictData.nombres.length === 1 ? 'el siguiente' : 'los siguientes'} {tipo}{conflictData.nombres.length > 1 ? 's' : ''}:
+        </p>
+        
+        <ul className="list-disc list-inside text-sm text-gray-700 mb-4 ml-2">
+          {conflictData.nombres.map((nombre, idx) => (
+            <li key={idx} className="mb-1">{nombre}</li>
+          ))}
+        </ul>
+        
+        <p className="text-sm text-gray-700 mb-6">
+          ¿Desea continuar de todos modos?
+        </p>
+        
+        <div className="flex items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={handleCancelConfirm}
+            className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirmSubmit}
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            Continuar
+          </button>
+        </div>
       </div>
     </div>
+  );
+
+  if (!asModal) {
+    return (
+      <>
+        {formMarkup}
+        {confirmModalMarkup}
+      </>
+    );
+  }
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div
+          className="absolute inset-0 bg-black/40"
+          onClick={(onRequestClose ?? onCancel)}
+          aria-hidden="true"
+        />
+
+        <div
+          ref={panelRef}
+          tabIndex={-1}
+          className="relative z-10 w-full max-w-2xl rounded-xl bg-white p-4 md:p-6 shadow-xl outline-none"
+        >
+          {formMarkup}
+        </div>
+      </div>
+      
+      {confirmModalMarkup}
+    </>
   );
 }
