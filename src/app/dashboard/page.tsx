@@ -162,15 +162,47 @@ export default function DashboardPage() {
     await loadSensores(role === 'admin');
   };
 
-  const handleDeleteSensor = async (id: string) => {
-    if (!confirm('¿Eliminar este sensor?')) return;
-    const res = await fetch(api(`/api/sensors/${id}`), { method: 'DELETE' });
-    if (!res.ok && res.status !== 204) {
-      const j = await res.json().catch(() => ({}));
-      alert(j?.error ?? 'No se pudo eliminar');
-      return;
+  async function fetchUsage(
+    kind: 'sensor' | 'actuator',
+    id: string
+  ): Promise<{ projects: { id: number; nombre: string }[] }> {
+    const url =
+      kind === 'sensor'
+        ? api(`/api/sensors/${id}/usage`)
+        : api(`/api/actuators/${id}/usage`);
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) {
+      // Si el endpoint no existe o falla, devolvemos vacío para no romper el flujo.
+      return { projects: [] };
     }
-    await loadSensores(role === 'admin');
+    return res.json();
+  }
+
+  const handleDeleteSensor = async (id: string) => {
+    try {
+      // Pre-chequeo de uso en proyectos
+      const { projects } = await fetchUsage('sensor', id);
+
+      if (projects?.length) {
+        const nombres = projects.map(p => p.nombre).join(' - ');
+        const msg = `El elemento a eliminar está siendo utilizado en los proyectos: ${nombres}. ¿Desea continuar?`;
+        if (!confirm(msg)) return;
+      } else {
+        if (!confirm('¿Eliminar este sensor?')) return;
+      }
+
+      // DELETE (soft-delete en backend)
+      const res = await fetch(api(`/api/sensors/${id}`), { method: 'DELETE' });
+      if (!res.ok && res.status !== 204) {
+        const j = await res.json().catch(() => ({}));
+        alert(j?.error ?? 'No se pudo eliminar');
+        return;
+      }
+      await loadSensores(role === 'admin');
+    } catch (e) {
+      console.error(e);
+      alert('No se pudo eliminar');
+    }
   };
 
   // ----------------- Crear / Editar Actuador -----------------
@@ -219,14 +251,30 @@ export default function DashboardPage() {
   };
 
   const handleDeleteActuator = async (id: string) => {
-    if (!confirm('¿Eliminar este actuador?')) return;
-    const res = await fetch(api(`/api/actuators/${id}`), { method: 'DELETE' });
-    if (!res.ok && res.status !== 204) {
-      const j = await res.json().catch(() => ({}));
-      alert(j?.error ?? 'No se pudo eliminar');
-      return;
+    try {
+      // Pre-chequeo de uso en proyectos
+      const { projects } = await fetchUsage('actuator', id);
+
+      if (projects?.length) {
+        const nombres = projects.map(p => p.nombre).join(' - ');
+        const msg = `El elemento a eliminar está siendo utilizado en los proyectos: ${nombres}. ¿Desea continuar?`;
+        if (!confirm(msg)) return;
+      } else {
+        if (!confirm('¿Eliminar este actuador?')) return;
+      }
+
+      // DELETE (soft-delete en backend)
+      const res = await fetch(api(`/api/actuators/${id}`), { method: 'DELETE' });
+      if (!res.ok && res.status !== 204) {
+        const j = await res.json().catch(() => ({}));
+        alert(j?.error ?? 'No se pudo eliminar');
+        return;
+      }
+      await loadActuadores(role === 'admin');
+    } catch (e) {
+      console.error(e);
+      alert('No se pudo eliminar');
     }
-    await loadActuadores(role === 'admin');
   };
 
   // ------------------------ Crear / Editar Proyecto ------------------------
@@ -392,7 +440,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-{/* MODAL: Sensor */}
+        {/* MODAL: Sensor */}
         <SensorActuatorForm
           asModal
           open={openSensor}
