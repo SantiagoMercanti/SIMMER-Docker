@@ -26,7 +26,15 @@ export async function GET(
         sensor_id: true,
         nombre: true,
         descripcion: true,
-        unidad_de_medida: true,
+        unidad_medida_id: true,  // ← ID de la unidad
+        unidadMedida: {          // ← Relación con UnidadMedida
+          select: {
+            id: true,
+            nombre: true,
+            simbolo: true,
+            categoria: true,
+          }
+        },
         valor_min: true,
         valor_max: true,
         estado: true,
@@ -36,6 +44,7 @@ export async function GET(
         activo: true,
       },
     });
+
     if (!s) {
       return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
     }
@@ -45,25 +54,27 @@ export async function GET(
       try {
         await requireAdmin();
       } catch {
-        return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 }); // o 403 si querés
+        return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
       }
     }
 
-    // Ahora devolvemos los rangos como NUMBER (float) y el resto explícito:
+    // Devolver con la información de la unidad
     return NextResponse.json({
-      id: s.sensor_id,                              // number
-      nombre: s.nombre,                             // string
-      descripcion: s.descripcion ?? null,           // string | null
-      unidadMedidaId: s.unidad_medida_id,  // ← CAMBIO
-      valorMin: s.valor_min ?? null,                // number | null  ✅
-      valorMax: s.valor_max ?? null,                // number | null  ✅
-      estado: Boolean(s.estado),                    // boolean
-      fuenteDatos: s.fuente_datos ?? null,          // string | null
-      createdAt: s.createdAt,                       // ISO al serializar
-      updatedAt: s.updatedAt,                       // ISO al serializar
+      id: s.sensor_id,
+      nombre: s.nombre,
+      descripcion: s.descripcion ?? null,
+      unidadMedidaId: s.unidad_medida_id,
+      unidadMedida: s.unidadMedida,  // ← Objeto completo de la unidad
+      valorMin: s.valor_min ?? null,
+      valorMax: s.valor_max ?? null,
+      estado: Boolean(s.estado),
+      fuenteDatos: s.fuente_datos ?? null,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
     });
   } catch (_err: unknown) {
-    return NextResponse.json({ error: 'Error del servidor', err: _err }, { status: 500 });
+    console.error('Error en GET /api/sensors/:id', _err);
+    return NextResponse.json({ error: 'Error del servidor' }, { status: 500 });
   }
 }
 

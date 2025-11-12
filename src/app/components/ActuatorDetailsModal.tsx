@@ -10,9 +10,14 @@ type ApiActuatorAnyCase = {
   nombre: string;
   descripcion?: string | null;
 
-  // unidad
-  unidad_de_medida?: string;
-  unidadMedida?: string;
+  // unidad como objeto (nuevo)
+  unidadMedida?: {
+    id: number;
+    nombre: string;
+    simbolo: string;
+    categoria: string;
+  };
+  unidadMedidaId?: number;
 
   // rangos
   valor_max?: number;
@@ -40,7 +45,8 @@ type ActuatorDetail = {
   id: number;
   nombre: string;
   descripcion?: string | null;
-  unidad: string;
+  unidad: string;  // Guardaremos el símbolo para mostrar
+  unidadNombre?: string;  // Opcional: nombre completo
   valorMax: number | null;
   valorMin: number | null;
   estado: boolean;
@@ -66,7 +72,8 @@ function isManagerOrAdmin(role: Role) {
 
 // Normalizador (acepta camelCase/snake_case)
 function normalizeActuator(data: ApiActuatorAnyCase): ActuatorDetail {
-  const unidad = data.unidad_de_medida ?? data.unidadMedida ?? '';
+  const unidad = data.unidadMedida?.simbolo ?? '';
+  const unidadNombre = data.unidadMedida?.nombre;
   const valorMax = (data.valor_max ?? data.valorMax ?? null) as number | null;
   const valorMin = (data.valor_min ?? data.valorMin ?? null) as number | null;
   const fuente = (data.fuente_datos ?? data.fuenteDatos ?? null) as string | null;
@@ -79,6 +86,7 @@ function normalizeActuator(data: ApiActuatorAnyCase): ActuatorDetail {
     nombre: data.nombre,
     descripcion: data.descripcion ?? '',
     unidad,
+    unidadNombre,
     valorMax,
     valorMin,
     estado: Boolean(data.estado),

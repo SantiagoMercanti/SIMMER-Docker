@@ -26,7 +26,15 @@ export async function GET(
         actuator_id: true,
         nombre: true,
         descripcion: true,
-        unidad_de_medida: true,
+        unidad_medida_id: true,  // ← ID de la unidad
+        unidadMedida: {          // ← Relación con UnidadMedida
+          select: {
+            id: true,
+            nombre: true,
+            simbolo: true,
+            categoria: true,
+          }
+        },
         valor_min: true,
         valor_max: true,
         estado: true,
@@ -54,7 +62,8 @@ export async function GET(
       id: a.actuator_id,
       nombre: a.nombre,
       descripcion: a.descripcion ?? null,
-      unidadMedida: a.unidad_de_medida ?? '',
+      unidadMedidaId: a.unidad_medida_id,
+      unidadMedida: a.unidadMedida,  // ← Objeto completo de la unidad
       valorMin: a.valor_min ?? null,
       valorMax: a.valor_max ?? null,
       estado: Boolean(a.estado),
@@ -63,6 +72,7 @@ export async function GET(
       updatedAt: a.updatedAt,
     });
   } catch (_err: unknown) {
+    console.error('Error en GET /api/actuators/:id', _err);
     return NextResponse.json({ error: 'Error del servidor', err: _err }, { status: 500 });
   }
 }
@@ -86,7 +96,7 @@ export async function PATCH(
 
     // Campos opcionales (actualización parcial)
     const nombre: string | undefined = body?.nombre?.trim?.() || undefined;
-    const unidadMedida: string | undefined = body?.unidadMedida?.trim?.() || undefined;
+    const unidadMedidaId: number | undefined = body?.unidadMedidaId;  // ← CAMBIO
     const descripcionRaw: unknown = body?.descripcion;
     const fuenteDatosRaw: unknown = body?.fuenteDatos;
 
@@ -129,7 +139,7 @@ export async function PATCH(
     const data: Record<string, unknown> = {};
     if (nombre !== undefined) data.nombre = nombre;
     if (descripcion !== undefined) data.descripcion = descripcion; // string|null
-    if (unidadMedida !== undefined) data.unidad_de_medida = unidadMedida;
+    if (unidadMedidaId !== undefined) data.unidad_medida_id = unidadMedidaId;  // ← CAMBIO+    
     if (valorMin !== undefined) data.valor_min = valorMin;
     if (valorMax !== undefined) data.valor_max = valorMax;
     if (fuenteDatos !== undefined) data.fuente_datos = fuenteDatos;

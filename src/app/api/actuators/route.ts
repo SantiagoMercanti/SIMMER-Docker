@@ -40,7 +40,7 @@ export async function POST(req: Request) {
     const body = await req.json();
 
     const nombre: string = (body?.nombre ?? '').trim();
-    const unidadMedida: string = (body?.unidadMedida ?? '').trim();
+    const unidadMedidaId: number = body?.unidadMedidaId;  // ← CAMBIO
     const descripcion: string | undefined = body?.descripcion?.trim() || undefined;
     const fuenteDatos: string | undefined = body?.fuenteDatos?.trim() || undefined;
 
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
     const valorMax = Number(body.valorMax);
 
     if (!nombre) return NextResponse.json({ error: 'Falta nombre' }, { status: 400 });
-    if (!unidadMedida) return NextResponse.json({ error: 'Falta unidad de medida' }, { status: 400 });
+    if (!unidadMedidaId) return NextResponse.json({ error: 'Falta unidad de medida' }, { status: 400 });  // ← CAMBIO
     if (Number.isNaN(valorMin)) return NextResponse.json({ error: 'valorMin debe ser numérico' }, { status: 400 });
     if (Number.isNaN(valorMax)) return NextResponse.json({ error: 'valorMax debe ser numérico' }, { status: 400 });
     if (valorMin > valorMax) return NextResponse.json({ error: 'valorMax debe ser ≥ valorMin' }, { status: 400 });
@@ -64,7 +64,7 @@ export async function POST(req: Request) {
       data: {
         nombre,
         descripcion,
-        unidad_de_medida: unidadMedida,
+        unidad_medida_id: unidadMedidaId,  // ← CAMBIO
         valor_min: valorMin,
         valor_max: valorMax,
         fuente_datos: fuenteDatos,
@@ -77,6 +77,6 @@ export async function POST(req: Request) {
     const status = (err as { status?: number })?.status ?? 500;
     if (status === 401) return NextResponse.json({ error: 'No autenticado' }, { status });
     if (status === 403) return NextResponse.json({ error: 'No tienes permisos para crear actuadores' }, { status });
-    return NextResponse.json({ error: 'Error creando actuador' }, { status });
+    return NextResponse.json({ error: 'Error creando sensor' }, { status: 500 });
   }
 }
