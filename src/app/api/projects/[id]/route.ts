@@ -8,74 +8,73 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const projectId = Number(id);
-  if (!Number.isInteger(projectId) || projectId <= 0) {
+  const intId = Number(id);
+  if (!Number.isInteger(intId) || intId <= 0) {
     return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
   }
 
-  try {
-    const proj = await prisma.proyecto.findUnique({
-      where: { project_id: projectId },
-      include: {
-        // Para el form (ya lo tenía)
-        sensores: { select: { sensorId: true, sensor: { select: { sensor_id: true, nombre: true, unidad_de_medida: true } } } },
-        actuadores: { select: { actuadorId: true, actuador: { select: { actuator_id: true, nombre: true, unidad_de_medida: true } } } },
+  // Traemos el proyecto y solo las relaciones activas
+  const p = await prisma.proyecto.findUnique({
+    where: { project_id: intId },
+    select: {
+      project_id: true,
+      nombre: true,
+      descripcion: true,
+
+      // Solo sensores ACTIVOS vinculados
+      sensores: {
+        where: { sensor: { is: { activo: true } } },
+        select: {
+          sensor: {
+            select: {
+              sensor_id: true,
+              nombre: true,
+              unidad_de_medida: true,
+            },
+          },
+        },
       },
-    });
 
-    if (!proj) {
-      return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 });
-    }
-
-    // Si está inactivo, solo admin puede verlo
-    if (!proj.activo) {
-      try {
-        await requireAdmin();
-      } catch {
-        return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 });
-      }
-    }
-
-    // Compat form
-    const sensorIds = proj.sensores.map(s => s.sensorId);
-    const actuatorIds = proj.actuadores.map(a => a.actuadorId);
-
-    // Datos para el modal
-    const sensors = proj.sensores
-      .map(s => s.sensor)
-      .filter(Boolean)
-      .map(s => ({
-        id: s!.sensor_id,
-        nombre: s!.nombre,
-        unidadMedida: s!.unidad_de_medida ?? '',
-      }));
-
-    const actuators = proj.actuadores
-      .map(a => a.actuador)
-      .filter(Boolean)
-      .map(a => ({
-        id: a!.actuator_id,
-        nombre: a!.nombre,
-        unidadMedida: a!.unidad_de_medida ?? '',
-      }));
-    return NextResponse.json(
-      {
-        id: proj.project_id,
-        nombre: proj.nombre,
-        descripcion: proj.descripcion ?? '',
-        // Para el form:
-        sensorIds,
-        actuatorIds,
-        // Para el modal:
-        sensors,
-        actuators,
+      // Solo actuadores ACTIVOS vinculados
+      actuadores: {
+        where: { actuador: { is: { activo: true } } },
+        select: {
+          actuador: {
+            select: {
+              actuator_id: true,
+              nombre: true,
+              unidad_de_medida: true,
+            },
+          },
+        },
       },
-      { status: 200 }
-    );
-  } catch (err) {
-    console.error('GET /api/projects/:id error:', err);
-    return NextResponse.json({ error: 'Error al obtener el proyecto' }, { status: 500 });
+    },
+  });
+
+  if (!p) {
+    return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 });
   }
+
+  // Normalizamos al formato que tu modal ya soporta (sensors/actuators)
+  const sensors = p.sensores.map((x) => ({
+    id: x.sensor.sensor_id,
+    nombre: x.sensor.nombre,
+    unidadMedida: x.sensor.unidad_de_medida ?? '',
+  }));
+
+  const actuators = p.actuadores.map((x) => ({
+    id: x.actuador.actuator_id,
+    nombre: x.actuador.nombre,
+    unidadMedida: x.actuador.unidad_de_medida ?? '',
+  }));
+
+  return NextResponse.json({
+    project_id: p.project_id,
+    nombre: p.nombre,
+    descripcion: p.descripcion ?? '',
+    sensors,
+    actuators,
+  });
 }
 
 // PATCH /api/projects/:id
