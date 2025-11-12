@@ -9,7 +9,7 @@ const api = (p: string) => `${BASE}${p}`;
 export type SensorActuatorFormValues = {
   nombre: string;
   descripcion: string;
-  unidadMedida: string;
+  unidadMedidaId: number;  // ← Cambiar de string a number
   valorMin: string;   // strings para validación simple en UI
   valorMax: string;
   fuenteDatos: string;
@@ -45,7 +45,7 @@ export default function SensorActuatorForm({
   const [values, setValues] = useState<SensorActuatorFormValues>({
     nombre: initialValues.nombre ?? '',
     descripcion: initialValues.descripcion ?? '',
-    unidadMedida: initialValues.unidadMedida ?? '',
+    unidadMedidaId: initialValues.unidadMedidaId ?? 0,  // ← Cambio
     valorMin: initialValues.valorMin ?? '',
     valorMax: initialValues.valorMax ?? '',
     fuenteDatos: initialValues.fuenteDatos ?? '',
@@ -55,15 +55,23 @@ export default function SensorActuatorForm({
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [conflictData, setConflictData] = useState<ConflictData | null>(null);
   const [isCheckingConflict, setIsCheckingConflict] = useState(false);
-  
+
   const panelRef = useRef<HTMLDivElement>(null);
   const confirmModalRef = useRef<HTMLDivElement>(null);
+
+  const [unidadesDisponibles, setUnidadesDisponibles] = useState<Array<{
+    id: number;
+    nombre: string;
+    simbolo: string;
+    categoria: string;
+  }>>([]);
+  const [loadingUnidades, setLoadingUnidades] = useState(false);
 
   // --- Desestructuración para deps del efecto (arreglo recomendado) ---
   const {
     nombre: ivNombre = '',
     descripcion: ivDescripcion = '',
-    unidadMedida: ivUnidadMedida = '',
+    unidadMedidaId: ivUnidadMedidaId = 0,  // ← Cambio aquí
     valorMin: ivValorMin = '',
     valorMax: ivValorMax = '',
     fuenteDatos: ivFuenteDatos = '',
@@ -75,7 +83,7 @@ export default function SensorActuatorForm({
     setValues({
       nombre: ivNombre,
       descripcion: ivDescripcion,
-      unidadMedida: ivUnidadMedida,
+      unidadMedidaId: ivUnidadMedidaId,  // ← Cambio aquí
       valorMin: ivValorMin,
       valorMax: ivValorMax,
       fuenteDatos: ivFuenteDatos,
@@ -88,7 +96,7 @@ export default function SensorActuatorForm({
     asModal,
     ivNombre,
     ivDescripcion,
-    ivUnidadMedida,
+    ivUnidadMedidaId,  // ← Cambio aquí
     ivValorMin,
     ivValorMax,
     ivFuenteDatos,
@@ -130,7 +138,7 @@ export default function SensorActuatorForm({
 
     if (!values.nombre.trim()) next.nombre = 'El nombre es obligatorio.';
     if (!values.descripcion.trim()) next.descripcion = 'La descripción es obligatoria.';
-    if (!values.unidadMedida.trim()) next.unidadMedida = 'La unidad de medida es obligatoria.';
+    if (!values.unidadMedidaId) next.unidadMedida = 'Debe seleccionar una unidad de medida.'; // ← Cambio aquí
     if (!values.fuenteDatos.trim()) next.fuenteDatos = 'La fuente de datos es obligatoria.';
 
     // Obligatorios:
@@ -176,7 +184,7 @@ export default function SensorActuatorForm({
       }
 
       const data = await response.json();
-      
+
       if (data.conflict) {
         const items = tipo === 'sensor' ? data.sensors : data.actuators;
         const nombres = items.map((item: { nombre: string }) => item.nombre);
@@ -199,7 +207,7 @@ export default function SensorActuatorForm({
 
     // Verificar conflictos de fuente_datos
     const hasConflict = await checkFuenteDatosConflict();
-    
+
     if (hasConflict) {
       setShowConfirmModal(true);
     } else {
@@ -218,6 +226,25 @@ export default function SensorActuatorForm({
     setShowConfirmModal(false);
     setConflictData(null);
   };
+
+  useEffect(() => {
+    const loadUnidades = async () => {
+      setLoadingUnidades(true);
+      try {
+        const response = await fetch(api('/api/units'));
+        if (response.ok) {
+          const data = await response.json();
+          setUnidadesDisponibles(data);
+        }
+      } catch (error) {
+        console.error('Error cargando unidades:', error);
+      } finally {
+        setLoadingUnidades(false);
+      }
+    };
+
+    loadUnidades();
+  }, []);
 
   const wrapperClass = asModal
     ? 'space-y-4'
@@ -268,15 +295,23 @@ export default function SensorActuatorForm({
         <label className="block mb-1 text-sm text-gray-600" htmlFor="unidadMedida">
           Unidad de medida
         </label>
-        <input
+        <select
           id="unidadMedida"
-          type="text"
-          value={values.unidadMedida}
-          onChange={handleChange('unidadMedida')}
-          placeholder="p. ej. °C, pH, RPM, %"
+          value={values.unidadMedidaId || ''}
+          onChange={(e) => setValues(v => ({ ...v, unidadMedidaId: Number(e.target.value) }))}
           className="w-full px-3 py-2 border border-gray-300 text-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
-        />
+          disabled={loadingUnidades}
+        >
+          <option value="">
+            {loadingUnidades ? 'Cargando...' : 'Seleccione una unidad'}
+          </option>
+          {unidadesDisponibles.map((unidad) => (
+            <option key={unidad.id} value={unidad.id}>
+              {unidad.nombre} ({unidad.simbolo}) - {unidad.categoria}
+            </option>
+          ))}
+        </select>
         {errors.unidadMedida && (
           <p className="text-xs text-red-600 mt-1">{errors.unidadMedida}</p>
         )}
@@ -368,7 +403,7 @@ export default function SensorActuatorForm({
         onClick={handleCancelConfirm}
         aria-hidden="true"
       />
-      
+
       <div
         ref={confirmModalRef}
         tabIndex={-1}
@@ -377,21 +412,21 @@ export default function SensorActuatorForm({
         <h4 className="text-lg font-semibold text-gray-900 mb-3">
           Fuente de datos duplicada
         </h4>
-        
+
         <p className="text-sm text-gray-700 mb-2">
           Este tópico está siendo utilizado por {conflictData.nombres.length === 1 ? 'el siguiente' : 'los siguientes'} {tipo}{conflictData.nombres.length > 1 ? 's' : ''}:
         </p>
-        
+
         <ul className="list-disc list-inside text-sm text-gray-700 mb-4 ml-2">
           {conflictData.nombres.map((nombre, idx) => (
             <li key={idx} className="mb-1">{nombre}</li>
           ))}
         </ul>
-        
+
         <p className="text-sm text-gray-700 mb-6">
           ¿Desea continuar de todos modos?
         </p>
-        
+
         <div className="flex items-center justify-end gap-3">
           <button
             type="button"
@@ -444,7 +479,7 @@ export default function SensorActuatorForm({
           {formMarkup}
         </div>
       </div>
-      
+
       {confirmModalMarkup}
     </>
   );

@@ -17,6 +17,21 @@ enum Role {
   admin
 }
 
+enum CategoriaUnidad {
+  temperatura
+  presion
+  volumen
+  masa
+  tiempo
+  velocidad
+  concentracion
+  pH
+  flujo
+  frecuencia
+  porcentaje
+  otra
+}
+
 // --- Usuario / Perfil ---
 model UserMetadata {
   id        String   @id @default(uuid())
@@ -37,11 +52,28 @@ model UserMetadata {
 
 // --- Sensores / Actuadores / Proyectos ---
 
+model UnidadMedida {
+  id          Int              @id @default(autoincrement())
+  nombre      String           // ej: "Grados Celsius"
+  simbolo     String           @unique // ej: "°C"
+  categoria   CategoriaUnidad
+  activo      Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  sensores    Sensor[]
+  actuadores  Actuador[]
+
+  @@index([activo])
+  @@index([categoria])
+}
+
 model Sensor {
   sensor_id        Int               @id @default(autoincrement())
   nombre           String
   descripcion      String?
-  unidad_de_medida String
+  unidad_medida_id   Int
+  unidadMedida       UnidadMedida      @relation(fields: [unidad_medida_id], references: [id])
   valor_max        Float
   valor_min        Float
   estado           Boolean           @default(true)
@@ -56,13 +88,15 @@ model Sensor {
 
   @@index([nombre])
   @@index([activo])
+  @@index([unidad_medida_id])
 }
 
 model Actuador {
   actuator_id      Int                @id @default(autoincrement())
   nombre           String
   descripcion      String?
-  unidad_de_medida String
+  unidad_medida_id   Int
+  unidadMedida       UnidadMedida       @relation(fields: [unidad_medida_id], references: [id])
   valor_max        Float
   valor_min        Float
   estado           Boolean            @default(true)
@@ -77,6 +111,7 @@ model Actuador {
 
   @@index([nombre])
   @@index([activo])
+  @@index([unidad_medida_id])  // ← índice para la FK
 }
 
 model Proyecto {

@@ -54,7 +54,7 @@ export async function GET(
       id: s.sensor_id,                              // number
       nombre: s.nombre,                             // string
       descripcion: s.descripcion ?? null,           // string | null
-      unidadMedida: s.unidad_de_medida ?? '',       // string (como antes)
+      unidadMedidaId: s.unidad_medida_id,  // ← CAMBIO
       valorMin: s.valor_min ?? null,                // number | null  ✅
       valorMax: s.valor_max ?? null,                // number | null  ✅
       estado: Boolean(s.estado),                    // boolean
@@ -86,7 +86,7 @@ export async function PATCH(
 
     // Campos opcionales (actualización parcial)
     const nombre: string | undefined = body?.nombre?.trim?.() || undefined;
-    const unidadMedida: string | undefined = body?.unidadMedida?.trim?.() || undefined;
+    const unidadMedidaId: number | undefined = body?.unidadMedidaId;  // ← CAMBIO
     const descripcionRaw: unknown = body?.descripcion;
     const fuenteDatosRaw: unknown = body?.fuenteDatos;
 
@@ -129,7 +129,7 @@ export async function PATCH(
     const data: Record<string, unknown> = {};
     if (nombre !== undefined) data.nombre = nombre;
     if (descripcion !== undefined) data.descripcion = descripcion; // string|null
-    if (unidadMedida !== undefined) data.unidad_de_medida = unidadMedida;
+    if (unidadMedidaId !== undefined) data.unidad_medida_id = unidadMedidaId;  // ← CAMBIO+    
     if (valorMin !== undefined) data.valor_min = valorMin;
     if (valorMax !== undefined) data.valor_max = valorMax;
     if (fuenteDatos !== undefined) data.fuente_datos = fuenteDatos; // string|null
