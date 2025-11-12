@@ -7,13 +7,22 @@ export async function GET(
 ) {
   const { id } = await params;
   const actuadorId = Number(id);
+
   if (!Number.isInteger(actuadorId) || actuadorId <= 0) {
     return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
   }
 
+  // Solo proyectos ACTIVOS
   const rows = await prisma.proyectoActuador.findMany({
-    where: { actuadorId },
-    select: { proyecto: { select: { project_id: true, nombre: true } } },
+    where: {
+      actuadorId,
+      proyecto: {  // filtro por relación
+        is: { activo: true },
+      },
+    },
+    select: {
+      proyecto: { select: { project_id: true, nombre: true } },
+    },
   });
 
   const projects = rows
