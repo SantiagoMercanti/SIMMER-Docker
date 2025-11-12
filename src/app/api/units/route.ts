@@ -2,6 +2,51 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireCanMutate, requireAdmin } from '@/lib/auth';
 
+// Lista de categorías válidas (fuente única de verdad)
+const CATEGORIAS = [
+  'temperatura',
+  'presion',
+  'volumen',
+  'masa',
+  'tiempo',
+  'velocidad',
+  'concentracion',
+  'pH',
+  'flujo',
+  'frecuencia',
+  'porcentaje',
+  'otra',
+] as const;
+
+type CategoriaUnidad = typeof CATEGORIAS[number];
+
+// Helpers sin `any`
+function norm(s: string) {
+  // quita tildes y normaliza casing; trata el caso especial de pH
+  const base = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const lower = base.toLowerCase();
+  return lower === 'ph' ? 'pH' : lower;
+}
+
+function toCategoria(x: unknown): CategoriaUnidad | null {
+  if (typeof x !== 'string') return null;
+  const key = norm(x);
+  const hit = CATEGORIAS.find((v) => norm(v) === key);
+  return hit ?? null;
+}
+
+function pickString(obj: unknown, key: string): string {
+  if (obj && typeof obj === 'object') {
+    const val = (obj as Record<string, unknown>)[key];
+    if (typeof val === 'string') return val.trim();
+  }
+  return '';
+}
+
+function pickUnknown(obj: unknown, key: string): unknown {
+  return obj && typeof obj === 'object' ? (obj as Record<string, unknown>)[key] : undefined;
+}
+
 // GET /api/units → [{id, nombre, simbolo, categoria, activo}]
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -19,12 +64,12 @@ export async function GET(req: Request) {
 
   const rows = await prisma.unidadMedida.findMany({
     where: includeInactive ? {} : { activo: true },
-    select: { 
-      id: true, 
-      nombre: true, 
-      simbolo: true, 
+    select: {
+      id: true,
+      nombre: true,
+      simbolo: true,
       categoria: true,
-      activo: true 
+      activo: true,
     },
     orderBy: [{ activo: 'desc' }, { nombre: 'asc' }],
   });
@@ -37,32 +82,28 @@ export async function POST(req: Request) {
   try {
     await requireCanMutate();
 
-    const body = await req.json();
+    const raw = (await req.json()) as unknown;
 
-    const nombre: string = (body?.nombre ?? '').trim();
-    const simbolo: string = (body?.simbolo ?? '').trim();
-    const categoria: string = body?.categoria;
+    const nombre = pickString(raw, 'nombre');
+    const simbolo = pickString(raw, 'simbolo');
+    const categoriaRaw = pickUnknown(raw, 'categoria');
 
-    if (!nombre) return NextResponse.json({ error: 'Falta nombre' }, { status: 400 });
+    if (!nombre)  return NextResponse.json({ error: 'Falta nombre' }, { status: 400 });
     if (!simbolo) return NextResponse.json({ error: 'Falta símbolo' }, { status: 400 });
-    if (!categoria) return NextResponse.json({ error: 'Falta categoría' }, { status: 400 });
 
-    // Validar que la categoría sea válida
-    const categoriasValidas = [
-      'temperatura', 'presion', 'volumen', 'masa', 'tiempo', 
-      'velocidad', 'concentracion', 'pH', 'flujo', 'frecuencia', 
-      'porcentaje', 'otra'
-    ];
-    
-    if (!categoriasValidas.includes(categoria)) {
-      return NextResponse.json({ error: 'Categoría inválida' }, { status: 400 });
+    const categoria = toCategoria(categoriaRaw);
+    if (!categoria) {
+      return NextResponse.json(
+        { error: 'Categoría inválida', valores: CATEGORIAS },
+        { status: 400 }
+      );
     }
 
     const created = await prisma.unidadMedida.create({
       data: {
         nombre,
         simbolo,
-        categoria,
+        categoria, // ✅ Tipo correcto: CategoriaUnidad (union de CATEGORIAS)
       },
       select: { id: true, nombre: true, simbolo: true, categoria: true },
     });
@@ -72,12 +113,7 @@ export async function POST(req: Request) {
     const status = (err as { status?: number })?.status ?? 500;
     if (status === 401) return NextResponse.json({ error: 'No autenticado' }, { status });
     if (status === 403) return NextResponse.json({ error: 'No tienes permisos para crear unidades' }, { status });
-    
-    // Error de duplicado (símbolo único)
-    if ((err as any)?.code === 'P2002') {
-      return NextResponse.json({ error: 'Ya existe una unidad con ese símbolo' }, { status: 400 });
-    }
-    
+
     return NextResponse.json({ error: 'Error creando unidad de medida' }, { status: 500 });
   }
 }
