@@ -29,7 +29,15 @@ export async function GET(
             select: {
               sensor_id: true,
               nombre: true,
-              unidad_de_medida: true,
+              unidad_medida_id: true,  // ← ID de la unidad
+              unidadMedida: {           // ← Relación completa
+                select: {
+                  id: true,
+                  nombre: true,
+                  simbolo: true,
+                  categoria: true,
+                }
+              },
             },
           },
         },
@@ -43,7 +51,15 @@ export async function GET(
             select: {
               actuator_id: true,
               nombre: true,
-              unidad_de_medida: true,
+              unidad_medida_id: true,  // ← ID de la unidad
+              unidadMedida: {           // ← Relación completa
+                select: {
+                  id: true,
+                  nombre: true,
+                  simbolo: true,
+                  categoria: true,
+                }
+              },
             },
           },
         },
@@ -55,17 +71,19 @@ export async function GET(
     return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 });
   }
 
-  // Normalizamos al formato que tu modal ya soporta (sensors/actuators)
+  // Normalizamos al formato que el modal espera
   const sensors = p.sensores.map((x) => ({
     id: x.sensor.sensor_id,
     nombre: x.sensor.nombre,
-    unidadMedida: x.sensor.unidad_de_medida ?? '',
+    unidadMedida: x.sensor.unidadMedida?.simbolo ?? '',  // ← Símbolo de la unidad
+    unidadNombre: x.sensor.unidadMedida?.nombre,         // ← Opcional: nombre completo
   }));
 
   const actuators = p.actuadores.map((x) => ({
     id: x.actuador.actuator_id,
     nombre: x.actuador.nombre,
-    unidadMedida: x.actuador.unidad_de_medida ?? '',
+    unidadMedida: x.actuador.unidadMedida?.simbolo ?? '',
+    unidadNombre: x.actuador.unidadMedida?.nombre,
   }));
 
   return NextResponse.json({

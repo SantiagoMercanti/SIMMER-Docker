@@ -13,10 +13,19 @@ type ApiProjectAnyCase = {
   sensorIds?: number[];
   actuatorIds?: number[];
 
-  // Para el modal
-  sensors?: Array<{ id: number; nombre: string; unidadMedida?: string }>;
-  actuators?: Array<{ id: number; nombre: string; unidadMedida?: string }>;
-
+  // Para el modal (actualizado)
+  sensors?: Array<{
+    id: number;
+    nombre: string;
+    unidadMedida?: string;  // ← símbolo de la unidad
+    unidadNombre?: string;  // ← nombre completo (opcional)
+  }>;
+  actuators?: Array<{
+    id: number;
+    nombre: string;
+    unidadMedida?: string;
+    unidadNombre?: string;
+  }>;
   // (fallbacks si en algún momento vienen con otras claves)
   sensores?: Array<{ sensor?: { sensor_id: number; nombre: string; unidad_de_medida?: string } }>;
   actuadores?: Array<{ actuador?: { actuator_id: number; nombre: string; unidad_de_medida?: string } }>;
@@ -178,7 +187,7 @@ export default function ProjectDetailsModal({
                         <span className="text-gray-700">·</span>
                         <span className="text-gray-700">
                           {/* valor hardcodeado 30 + unidad */}
-                          30{ s.unidad ? ` ${s.unidad}` : '' }
+                          30{s.unidad ? ` ${s.unidad}` : ''}
                         </span>
                       </li>
                     ))}
