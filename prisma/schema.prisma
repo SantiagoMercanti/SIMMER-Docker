@@ -54,7 +54,7 @@ model UserMetadata {
 model UnidadMedida {
   id        Int             @id @default(autoincrement())
   nombre    String // ej: "Grados Celsius"
-  simbolo   String          @unique // ej: "°C"
+  simbolo   String          // ej: "°C"
   categoria CategoriaUnidad
   activo    Boolean         @default(true)
   createdAt DateTime        @default(now())

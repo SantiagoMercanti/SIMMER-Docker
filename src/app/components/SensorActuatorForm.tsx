@@ -385,10 +385,10 @@ export default function SensorActuatorForm({
         setValues((v) => ({ ...v, unidadMedidaId: 0 }));
       }
 
-      alert('Unidad de medida marcada como inactiva correctamente');
+      alert('Unidad de medida eliminada.');
     } catch (error) {
       console.error('Error al eliminar unidad:', error);
-      alert('Error al eliminar la unidad de medida');
+      alert('Error al eliminar la unidad de medida.');
     } finally {
       setDeletingUnitId(null);
     }
