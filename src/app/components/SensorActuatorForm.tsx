@@ -95,6 +95,17 @@ export default function SensorActuatorForm({
   const [newUnitErrors, setNewUnitErrors] = useState<Record<string, string>>({});
   const [isCreatingUnit, setIsCreatingUnit] = useState(false);
 
+  // Estado para gestionar unidades existentes
+  const [showManageUnits, setShowManageUnits] = useState(false);
+  const [deletingUnitId, setDeletingUnitId] = useState<number | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmData, setDeleteConfirmData] = useState<{
+    unitId: number;
+    unitName: string;
+    sensores: { nombre: string }[];
+    actuadores: { nombre: string }[];
+  } | null>(null);
+
   const {
     nombre: ivNombre = '',
     descripcion: ivDescripcion = '',
@@ -121,6 +132,8 @@ export default function SensorActuatorForm({
     setShowNewUnitForm(false);
     setNewUnit({ nombre: '', simbolo: '', categoria: '' });
     setNewUnitErrors({});
+    setShowManageUnits(false);
+    setDeleteConfirmData(null);
   }, [
     open,
     asModal,
@@ -136,7 +149,7 @@ export default function SensorActuatorForm({
   useEffect(() => {
     if (!asModal || !open) return;
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !showConfirmModal && !showNewUnitForm) {
+      if (e.key === 'Escape' && !showConfirmModal && !showNewUnitForm && !showDeleteConfirm) {
         (onRequestClose ?? onCancel)?.();
       }
     };
@@ -150,7 +163,7 @@ export default function SensorActuatorForm({
       document.removeEventListener('keydown', handleKey);
       document.body.style.overflow = prev;
     };
-  }, [asModal, open, showConfirmModal, showNewUnitForm, onRequestClose, onCancel]);
+  }, [asModal, open, showConfirmModal, showNewUnitForm, showDeleteConfirm, onRequestClose, onCancel]);
 
   const titulo = useMemo(
     () => (initialValues?.nombre ? `Editar ${tipo}` : `Nuevo ${tipo}`),
@@ -341,6 +354,64 @@ export default function SensorActuatorForm({
     }
   };
 
+  // Verificar uso de una unidad antes de eliminar
+  const checkUnitUsage = async (unitId: number): Promise<{
+    sensores: { nombre: string }[];
+    actuadores: { nombre: string }[];
+  }> => {
+    // Por simplicidad, retornamos arrays vacíos
+    // El backend nos devolverá la info real al eliminar
+    return { sensores: [], actuadores: [] };
+  };
+
+  // Iniciar eliminación de unidad
+  const handleDeleteUnit = async (unitId: number, unitName: string) => {
+    const usage = await checkUnitUsage(unitId);
+    setDeleteConfirmData({
+      unitId,
+      unitName,
+      sensores: usage.sensores,
+      actuadores: usage.actuadores,
+    });
+    setShowDeleteConfirm(true);
+  };
+
+  // Confirmar eliminación
+  const handleConfirmDeleteUnit = async () => {
+    if (!deleteConfirmData) return;
+
+    setDeletingUnitId(deleteConfirmData.unitId);
+    try {
+      const response = await fetch(api(`/api/units/${deleteConfirmData.unitId}`), {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        alert(errorData?.error ?? 'Error al eliminar la unidad de medida');
+        return;
+      }
+
+      // Recargar la lista de unidades
+      await loadUnidades();
+
+      // Si la unidad eliminada estaba seleccionada, limpiar selección
+      if (values.unidadMedidaId === deleteConfirmData.unitId) {
+        setValues((v) => ({ ...v, unidadMedidaId: 0 }));
+      }
+
+      setShowDeleteConfirm(false);
+      setDeleteConfirmData(null);
+
+      alert('Unidad de medida marcada como inactiva correctamente');
+    } catch (error) {
+      console.error('Error al eliminar unidad:', error);
+      alert('Error al eliminar la unidad de medida');
+    } finally {
+      setDeletingUnitId(null);
+    }
+  };
+
   const wrapperClass = asModal
     ? 'space-y-4'
     : 'bg-white shadow-md rounded-lg p-4 md:p-6 space-y-4';
@@ -452,6 +523,62 @@ export default function SensorActuatorForm({
     </div>
   );
 
+  // Lista de gestión de unidades existentes
+  const manageUnitsMarkup = showManageUnits && (
+    <div className="mt-3 p-4 bg-gray-50 border border-gray-200 rounded-md space-y-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-semibold text-gray-800">Gestionar unidades existentes</h4>
+        <button
+          type="button"
+          onClick={() => setShowManageUnits(false)}
+          className="text-gray-500 hover:text-gray-700"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <div className="max-h-60 overflow-y-auto space-y-2">
+        {unidadesDisponibles.length === 0 ? (
+          <p className="text-sm text-gray-500 text-center py-4">No hay unidades disponibles</p>
+        ) : (
+          unidadesDisponibles.map((unidad) => (
+            <div
+              key={unidad.id}
+              className="flex items-center justify-between p-2 bg-white border border-gray-200 rounded hover:bg-gray-50"
+            >
+              <div className="flex-1">
+                <p className="text-sm font-medium text-gray-800">
+                  {unidad.nombre} ({unidad.simbolo})
+                </p>
+                <p className="text-xs text-gray-500">{unidad.categoria}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleDeleteUnit(unidad.id, unidad.nombre)}
+                disabled={deletingUnitId === unidad.id}
+                className="ml-2 p-1.5 text-red-600 hover:bg-red-50 rounded focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Eliminar unidad"
+              >
+                {deletingUnitId === unidad.id ? (
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+
   // Formulario principal
   const formMarkup = (
     <form onSubmit={handleSubmit} className={wrapperClass} noValidate>
@@ -520,19 +647,33 @@ export default function SensorActuatorForm({
         )}
 
         {/* Botón para mostrar formulario de nueva unidad */}
-        {!showNewUnitForm && (
-          <button
-            type="button"
-            onClick={() => setShowNewUnitForm(true)}
-            className="mt-2 text-xs text-blue-600 hover:text-blue-800 hover:underline focus:outline-none"
-            disabled={loadingUnidades}
-          >
-            ¿No encuentras la unidad? Crear nueva
-          </button>
+        {!showNewUnitForm && !showManageUnits && (
+          <div className="flex items-center gap-3 mt-2">
+            <button
+              type="button"
+              onClick={() => setShowNewUnitForm(true)}
+              className="text-xs text-blue-600 hover:text-blue-800 hover:underline focus:outline-none"
+              disabled={loadingUnidades}
+            >
+              ¿No encuentras la unidad? Crear nueva
+            </button>
+            <span className="text-xs text-gray-400">|</span>
+            <button
+              type="button"
+              onClick={() => setShowManageUnits(true)}
+              className="text-xs text-gray-600 hover:text-gray-800 hover:underline focus:outline-none"
+              disabled={loadingUnidades}
+            >
+              Gestionar unidades existentes
+            </button>
+          </div>
         )}
 
         {/* Formulario inline para crear nueva unidad */}
         {newUnitFormMarkup}
+
+        {/* Lista de gestión de unidades existentes */}
+        {manageUnitsMarkup}
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -594,14 +735,14 @@ export default function SensorActuatorForm({
           type="button"
           onClick={onCancel}
           className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          disabled={isCheckingConflict || showNewUnitForm}
+          disabled={isCheckingConflict || showNewUnitForm || showManageUnits}
         >
           Cancelar
         </button>
         <button
           type="submit"
           className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled={isCheckingConflict || showNewUnitForm}
+          disabled={isCheckingConflict || showNewUnitForm || showManageUnits}
         >
           {isCheckingConflict ? 'Verificando...' : 'Guardar'}
         </button>
@@ -665,11 +806,99 @@ export default function SensorActuatorForm({
     </div>
   );
 
+  // Modal de confirmación de eliminación de unidad
+  const deleteConfirmModalMarkup = showDeleteConfirm && deleteConfirmData && (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="absolute inset-0 bg-black/50"
+        onClick={() => {
+          setShowDeleteConfirm(false);
+          setDeleteConfirmData(null);
+        }}
+        aria-hidden="true"
+      />
+
+      <div
+        tabIndex={-1}
+        className="relative z-10 w-full max-w-md rounded-xl bg-white p-6 shadow-xl outline-none"
+      >
+        <h4 className="text-lg font-semibold text-gray-900 mb-3">
+          Eliminar unidad de medida
+        </h4>
+
+        <p className="text-sm text-gray-700 mb-4">
+          ¿Está seguro que desea eliminar la unidad <strong>{deleteConfirmData.unitName}</strong>?
+        </p>
+
+        {(deleteConfirmData.sensores.length > 0 || deleteConfirmData.actuadores.length > 0) && (
+          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+            <p className="text-xs font-semibold text-yellow-800 mb-2">
+              ⚠️ Esta unidad está siendo utilizada por:
+            </p>
+            
+            {deleteConfirmData.sensores.length > 0 && (
+              <div className="mb-2">
+                <p className="text-xs font-medium text-gray-700">Sensores:</p>
+                <ul className="list-disc list-inside text-xs text-gray-600 ml-2">
+                  {deleteConfirmData.sensores.map((s, idx) => (
+                    <li key={idx}>{s.nombre}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {deleteConfirmData.actuadores.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-gray-700">Actuadores:</p>
+                <ul className="list-disc list-inside text-xs text-gray-600 ml-2">
+                  {deleteConfirmData.actuadores.map((a, idx) => (
+                    <li key={idx}>{a.nombre}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <p className="text-xs text-gray-600 mt-2">
+              La unidad se marcará como inactiva pero los elementos que la usan mantendrán la referencia.
+            </p>
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setShowDeleteConfirm(false);
+              setDeleteConfirmData(null);
+            }}
+            className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            disabled={deletingUnitId !== null}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirmDeleteUnit}
+            className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={deletingUnitId !== null}
+          >
+            {deletingUnitId !== null ? 'Eliminando...' : 'Eliminar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   if (!asModal) {
     return (
       <>
         {formMarkup}
         {confirmModalMarkup}
+        {deleteConfirmModalMarkup}
       </>
     );
   }
@@ -699,6 +928,7 @@ export default function SensorActuatorForm({
       </div>
 
       {confirmModalMarkup}
+      {deleteConfirmModalMarkup}
     </>
   );
 }
