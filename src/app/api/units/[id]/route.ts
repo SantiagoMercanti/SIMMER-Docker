@@ -30,32 +30,23 @@ export async function GET(
   return NextResponse.json(unidad);
 }
 
-// GET /api/units/[id]/usage → verifica si está en uso
-export async function usage(id: number) {
-  const [sensoresCount, actuadoresCount] = await Promise.all([
-    prisma.sensor.count({
+// Función auxiliar para verificar uso de una unidad
+async function checkUnitUsage(id: number) {
+  const [sensores, actuadores] = await Promise.all([
+    prisma.sensor.findMany({
       where: { unidad_medida_id: id, activo: true },
+      select: { sensor_id: true, nombre: true },
     }),
-    prisma.actuador.count({
+    prisma.actuador.findMany({
       where: { unidad_medida_id: id, activo: true },
+      select: { actuator_id: true, nombre: true },
     }),
   ]);
 
-  const sensores = await prisma.sensor.findMany({
-    where: { unidad_medida_id: id, activo: true },
-    select: { sensor_id: true, nombre: true },
-  });
-
-  const actuadores = await prisma.actuador.findMany({
-    where: { unidad_medida_id: id, activo: true },
-    select: { actuator_id: true, nombre: true },
-  });
-
   return {
-    inUse: sensoresCount + actuadoresCount > 0,
     sensores,
     actuadores,
-    total: sensoresCount + actuadoresCount,
+    inUse: sensores.length > 0 || actuadores.length > 0,
   };
 }
 
@@ -76,7 +67,7 @@ export async function DELETE(
     // Verificar si existe
     const unidad = await prisma.unidadMedida.findUnique({
       where: { id },
-      select: { id: true, activo: true },
+      select: { id: true, activo: true, nombre: true },
     });
 
     if (!unidad) {
@@ -90,10 +81,38 @@ export async function DELETE(
       );
     }
 
-    // Verificar uso (informativo, no bloquea)
-    const usageInfo = await usage(id);
+    // Verificar si está en uso
+    const usage = await checkUnitUsage(id);
 
-    // Soft-delete
+    if (usage.inUse) {
+      // BLOQUEAR eliminación si está en uso
+      const elementos = [];
+      
+      if (usage.sensores.length > 0) {
+        elementos.push(
+          ...usage.sensores.map(s => `Sensor: ${s.nombre}`)
+        );
+      }
+      
+      if (usage.actuadores.length > 0) {
+        elementos.push(
+          ...usage.actuadores.map(a => `Actuador: ${a.nombre}`)
+        );
+      }
+
+      return NextResponse.json(
+        {
+          error: 'No se puede eliminar la unidad de medida',
+          message: `La unidad "${unidad.nombre}" está siendo utilizada en los siguientes elementos:`,
+          elementos: elementos,
+          sensores: usage.sensores.map(s => ({ id: s.sensor_id, nombre: s.nombre })),
+          actuadores: usage.actuadores.map(a => ({ id: a.actuator_id, nombre: a.nombre })),
+        },
+        { status: 400 }
+      );
+    }
+
+    // Si no está en uso, permitir soft-delete
     await prisma.unidadMedida.update({
       where: { id },
       data: { activo: false },
@@ -102,7 +121,6 @@ export async function DELETE(
     return NextResponse.json(
       {
         message: 'Unidad marcada como inactiva',
-        usage: usageInfo,
       },
       { status: 200 }
     );

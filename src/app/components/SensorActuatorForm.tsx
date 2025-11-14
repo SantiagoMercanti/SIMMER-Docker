@@ -98,12 +98,10 @@ export default function SensorActuatorForm({
   // Estado para gestionar unidades existentes
   const [showManageUnits, setShowManageUnits] = useState(false);
   const [deletingUnitId, setDeletingUnitId] = useState<number | null>(null);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteConfirmData, setDeleteConfirmData] = useState<{
-    unitId: number;
-    unitName: string;
-    sensores: { nombre: string }[];
-    actuadores: { nombre: string }[];
+  const [showDeleteError, setShowDeleteError] = useState(false);
+  const [deleteErrorData, setDeleteErrorData] = useState<{
+    message: string;
+    elementos: string[];
   } | null>(null);
 
   const {
@@ -133,7 +131,8 @@ export default function SensorActuatorForm({
     setNewUnit({ nombre: '', simbolo: '', categoria: '' });
     setNewUnitErrors({});
     setShowManageUnits(false);
-    setDeleteConfirmData(null);
+    setShowDeleteError(false);
+    setDeleteErrorData(null);
   }, [
     open,
     asModal,
@@ -149,7 +148,7 @@ export default function SensorActuatorForm({
   useEffect(() => {
     if (!asModal || !open) return;
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !showConfirmModal && !showNewUnitForm && !showDeleteConfirm) {
+      if (e.key === 'Escape' && !showConfirmModal && !showNewUnitForm && !showDeleteError) {
         (onRequestClose ?? onCancel)?.();
       }
     };
@@ -163,7 +162,7 @@ export default function SensorActuatorForm({
       document.removeEventListener('keydown', handleKey);
       document.body.style.overflow = prev;
     };
-  }, [asModal, open, showConfirmModal, showNewUnitForm, showDeleteConfirm, onRequestClose, onCancel]);
+  }, [asModal, open, showConfirmModal, showNewUnitForm, showDeleteError, onRequestClose, onCancel]);
 
   const titulo = useMemo(
     () => (initialValues?.nombre ? `Editar ${tipo}` : `Nuevo ${tipo}`),
@@ -354,54 +353,37 @@ export default function SensorActuatorForm({
     }
   };
 
-  // Verificar uso de una unidad antes de eliminar
-  const checkUnitUsage = async (unitId: number): Promise<{
-    sensores: { nombre: string }[];
-    actuadores: { nombre: string }[];
-  }> => {
-    // Por simplicidad, retornamos arrays vacíos
-    // El backend nos devolverá la info real al eliminar
-    return { sensores: [], actuadores: [] };
-  };
-
   // Iniciar eliminación de unidad
   const handleDeleteUnit = async (unitId: number, unitName: string) => {
-    const usage = await checkUnitUsage(unitId);
-    setDeleteConfirmData({
-      unitId,
-      unitName,
-      sensores: usage.sensores,
-      actuadores: usage.actuadores,
-    });
-    setShowDeleteConfirm(true);
-  };
-
-  // Confirmar eliminación
-  const handleConfirmDeleteUnit = async () => {
-    if (!deleteConfirmData) return;
-
-    setDeletingUnitId(deleteConfirmData.unitId);
+    setDeletingUnitId(unitId);
     try {
-      const response = await fetch(api(`/api/units/${deleteConfirmData.unitId}`), {
+      const response = await fetch(api(`/api/units/${unitId}`), {
         method: 'DELETE',
       });
 
+      const responseData = await response.json();
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        alert(errorData?.error ?? 'Error al eliminar la unidad de medida');
+        // Mostrar error de unidad en uso
+        if (responseData.elementos) {
+          setDeleteErrorData({
+            message: responseData.message || `No se puede eliminar la unidad "${unitName}"`,
+            elementos: responseData.elementos,
+          });
+          setShowDeleteError(true);
+        } else {
+          alert(responseData?.error ?? 'Error al eliminar la unidad de medida');
+        }
         return;
       }
 
-      // Recargar la lista de unidades
+      // Eliminación exitosa
       await loadUnidades();
 
       // Si la unidad eliminada estaba seleccionada, limpiar selección
-      if (values.unidadMedidaId === deleteConfirmData.unitId) {
+      if (values.unidadMedidaId === unitId) {
         setValues((v) => ({ ...v, unidadMedidaId: 0 }));
       }
-
-      setShowDeleteConfirm(false);
-      setDeleteConfirmData(null);
 
       alert('Unidad de medida marcada como inactiva correctamente');
     } catch (error) {
@@ -655,7 +637,7 @@ export default function SensorActuatorForm({
               className="text-xs text-blue-600 hover:text-blue-800 hover:underline focus:outline-none"
               disabled={loadingUnidades}
             >
-              ¿No encuentras la unidad? Crear nueva
+              ¿No encuentras la unidad? Crear una nueva
             </button>
             <span className="text-xs text-gray-400">|</span>
             <button
@@ -806,8 +788,8 @@ export default function SensorActuatorForm({
     </div>
   );
 
-  // Modal de confirmación de eliminación de unidad
-  const deleteConfirmModalMarkup = showDeleteConfirm && deleteConfirmData && (
+  // Modal de error de eliminación de unidad
+  const deleteErrorModalMarkup = showDeleteError && deleteErrorData && (
     <div
       className="fixed inset-0 z-[70] flex items-center justify-center"
       role="dialog"
@@ -816,8 +798,8 @@ export default function SensorActuatorForm({
       <div
         className="absolute inset-0 bg-black/50"
         onClick={() => {
-          setShowDeleteConfirm(false);
-          setDeleteConfirmData(null);
+          setShowDeleteError(false);
+          setDeleteErrorData(null);
         }}
         aria-hidden="true"
       />
@@ -826,67 +808,43 @@ export default function SensorActuatorForm({
         tabIndex={-1}
         className="relative z-10 w-full max-w-md rounded-xl bg-white p-6 shadow-xl outline-none"
       >
-        <h4 className="text-lg font-semibold text-gray-900 mb-3">
-          Eliminar unidad de medida
-        </h4>
-
-        <p className="text-sm text-gray-700 mb-4">
-          ¿Está seguro que desea eliminar la unidad <strong>{deleteConfirmData.unitName}</strong>?
-        </p>
-
-        {(deleteConfirmData.sensores.length > 0 || deleteConfirmData.actuadores.length > 0) && (
-          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
-            <p className="text-xs font-semibold text-yellow-800 mb-2">
-              ⚠️ Esta unidad está siendo utilizada por:
-            </p>
-            
-            {deleteConfirmData.sensores.length > 0 && (
-              <div className="mb-2">
-                <p className="text-xs font-medium text-gray-700">Sensores:</p>
-                <ul className="list-disc list-inside text-xs text-gray-600 ml-2">
-                  {deleteConfirmData.sensores.map((s, idx) => (
-                    <li key={idx}>{s.nombre}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {deleteConfirmData.actuadores.length > 0 && (
-              <div>
-                <p className="text-xs font-medium text-gray-700">Actuadores:</p>
-                <ul className="list-disc list-inside text-xs text-gray-600 ml-2">
-                  {deleteConfirmData.actuadores.map((a, idx) => (
-                    <li key={idx}>{a.nombre}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <p className="text-xs text-gray-600 mt-2">
-              La unidad se marcará como inactiva pero los elementos que la usan mantendrán la referencia.
+        <div className="flex items-start gap-3 mb-4">
+          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+            <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <h4 className="text-lg font-semibold text-gray-900 mb-2">
+              No se puede eliminar la unidad
+            </h4>
+            <p className="text-sm text-gray-700 mb-3">
+              {deleteErrorData.message}
             </p>
           </div>
-        )}
+        </div>
 
-        <div className="flex items-center justify-end gap-3">
+        <div className="mb-6 p-3 bg-gray-50 border border-gray-200 rounded max-h-60 overflow-y-auto">
+          <ul className="space-y-1">
+            {deleteErrorData.elementos.map((elemento, idx) => (
+              <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
+                <span className="text-gray-400 mt-0.5">•</span>
+                <span>{elemento}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="flex items-center justify-end">
           <button
             type="button"
             onClick={() => {
-              setShowDeleteConfirm(false);
-              setDeleteConfirmData(null);
+              setShowDeleteError(false);
+              setDeleteErrorData(null);
             }}
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            disabled={deletingUnitId !== null}
+            className="rounded-md bg-gray-600 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
           >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirmDeleteUnit}
-            className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={deletingUnitId !== null}
-          >
-            {deletingUnitId !== null ? 'Eliminando...' : 'Eliminar'}
+            Entendido
           </button>
         </div>
       </div>
@@ -898,7 +856,7 @@ export default function SensorActuatorForm({
       <>
         {formMarkup}
         {confirmModalMarkup}
-        {deleteConfirmModalMarkup}
+        {deleteErrorModalMarkup}
       </>
     );
   }
@@ -928,7 +886,7 @@ export default function SensorActuatorForm({
       </div>
 
       {confirmModalMarkup}
-      {deleteConfirmModalMarkup}
+      {deleteErrorModalMarkup}
     </>
   );
 }
