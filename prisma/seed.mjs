@@ -35,58 +35,65 @@ async function main() {
     { nombre: 'Grados Celsius', simbolo: '°C', categoria: 'temperatura' },
     { nombre: 'Grados Fahrenheit', simbolo: '°F', categoria: 'temperatura' },
     { nombre: 'Kelvin', simbolo: 'K', categoria: 'temperatura' },
-    
+
     // pH
     { nombre: 'pH', simbolo: 'pH', categoria: 'pH' },
-    
+
     // Presión
     { nombre: 'Bar', simbolo: 'bar', categoria: 'presion' },
     { nombre: 'Pascal', simbolo: 'Pa', categoria: 'presion' },
     { nombre: 'PSI', simbolo: 'psi', categoria: 'presion' },
     { nombre: 'Atmósferas', simbolo: 'atm', categoria: 'presion' },
-    
+
     // Volumen
     { nombre: 'Litros', simbolo: 'L', categoria: 'volumen' },
     { nombre: 'Mililitros', simbolo: 'mL', categoria: 'volumen' },
     { nombre: 'Metros cúbicos', simbolo: 'm³', categoria: 'volumen' },
-    
+
     // Masa
     { nombre: 'Gramos', simbolo: 'g', categoria: 'masa' },
     { nombre: 'Kilogramos', simbolo: 'kg', categoria: 'masa' },
     { nombre: 'Miligramos', simbolo: 'mg', categoria: 'masa' },
-    
+
     // Velocidad/Frecuencia
     { nombre: 'Revoluciones por minuto', simbolo: 'RPM', categoria: 'frecuencia' },
     { nombre: 'Hertz', simbolo: 'Hz', categoria: 'frecuencia' },
-    
+
     // Concentración
     { nombre: 'Gramos por litro', simbolo: 'g/L', categoria: 'concentracion' },
     { nombre: 'Molar', simbolo: 'M', categoria: 'concentracion' },
     { nombre: 'Partes por millón', simbolo: 'ppm', categoria: 'concentracion' },
     { nombre: 'Porcentaje peso/volumen', simbolo: '% p/v', categoria: 'concentracion' },
-    
+
     // Flujo
     { nombre: 'Litros por minuto', simbolo: 'L/min', categoria: 'flujo' },
     { nombre: 'Mililitros por minuto', simbolo: 'mL/min', categoria: 'flujo' },
-    
+
     // Tiempo
     { nombre: 'Segundos', simbolo: 's', categoria: 'tiempo' },
     { nombre: 'Minutos', simbolo: 'min', categoria: 'tiempo' },
     { nombre: 'Horas', simbolo: 'h', categoria: 'tiempo' },
-    
+
     // Porcentaje
     { nombre: 'Porcentaje', simbolo: '%', categoria: 'porcentaje' },
-    
+
     // Otros
     { nombre: 'Adimensional', simbolo: '-', categoria: 'otra' },
   ];
 
   for (const u of unidades) {
-    await prisma.unidadMedida.upsert({
-      where: { simbolo: u.simbolo },
-      update: {},
-      create: u,
+    const existingUnidad = await prisma.unidadMedida.findFirst({
+      where: {
+        simbolo: u.simbolo,
+        categoria: u.categoria,
+      },
     });
+
+    if (!existingUnidad) {
+      await prisma.unidadMedida.create({
+        data: u,
+      });
+    }
   }
 
   console.log('✅ Unidades de medida inicializadas.');
