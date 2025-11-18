@@ -4,16 +4,18 @@ import { requireAdmin } from '@/lib/auth';
 
 // GET /api/units/[id] → detalle de una unidad
 export async function GET(
-  req: Request,
-  { params }: { params: { id: string } }
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const id = Number(params.id);
-  if (Number.isNaN(id)) {
+  const { id } = await params;
+  const unitId = Number(id);
+
+  if (Number.isNaN(unitId)) {
     return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
   }
 
   const unidad = await prisma.unidadMedida.findUnique({
-    where: { id },
+    where: { id: unitId },
     select: {
       id: true,
       nombre: true,
@@ -52,21 +54,23 @@ async function checkUnitUsage(id: number) {
 
 // DELETE /api/units/[id] → soft-delete (solo admin)
 export async function DELETE(
-  req: Request,
-  { params }: { params: { id: string } }
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Solo admin puede eliminar unidades
     await requireAdmin();
 
-    const id = Number(params.id);
-    if (Number.isNaN(id)) {
+    const { id } = await params;
+    const unitId = Number(id);
+
+    if (Number.isNaN(unitId)) {
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
     }
 
     // Verificar si existe
     const unidad = await prisma.unidadMedida.findUnique({
-      where: { id },
+      where: { id: unitId },
       select: { id: true, activo: true, nombre: true },
     });
 
@@ -82,31 +86,33 @@ export async function DELETE(
     }
 
     // Verificar si está en uso
-    const usage = await checkUnitUsage(id);
+    const usage = await checkUnitUsage(unitId);
 
     if (usage.inUse) {
       // BLOQUEAR eliminación si está en uso
-      const elementos = [];
-      
+      const elementos: string[] = [];
+
       if (usage.sensores.length > 0) {
-        elementos.push(
-          ...usage.sensores.map(s => `Sensor: ${s.nombre}`)
-        );
+        elementos.push(...usage.sensores.map((s) => `Sensor: ${s.nombre}`));
       }
-      
+
       if (usage.actuadores.length > 0) {
-        elementos.push(
-          ...usage.actuadores.map(a => `Actuador: ${a.nombre}`)
-        );
+        elementos.push(...usage.actuadores.map((a) => `Actuador: ${a.nombre}`));
       }
 
       return NextResponse.json(
         {
           error: 'No se puede eliminar la unidad de medida',
           message: `La unidad "${unidad.nombre}" está siendo utilizada en los siguientes elementos:`,
-          elementos: elementos,
-          sensores: usage.sensores.map(s => ({ id: s.sensor_id, nombre: s.nombre })),
-          actuadores: usage.actuadores.map(a => ({ id: a.actuator_id, nombre: a.nombre })),
+          elementos,
+          sensores: usage.sensores.map((s) => ({
+            id: s.sensor_id,
+            nombre: s.nombre,
+          })),
+          actuadores: usage.actuadores.map((a) => ({
+            id: a.actuator_id,
+            nombre: a.nombre,
+          })),
         },
         { status: 400 }
       );
@@ -114,7 +120,7 @@ export async function DELETE(
 
     // Si no está en uso, permitir soft-delete
     await prisma.unidadMedida.update({
-      where: { id },
+      where: { id: unitId },
       data: { activo: false },
     });
 
@@ -145,13 +151,15 @@ export async function DELETE(
 // PATCH /api/units/[id] → reactivar o editar
 export async function PATCH(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireAdmin();
 
-    const id = Number(params.id);
-    if (Number.isNaN(id)) {
+    const { id } = await params;
+    const unitId = Number(id);
+
+    if (Number.isNaN(unitId)) {
       return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
     }
 
@@ -168,7 +176,7 @@ export async function PATCH(
     }
 
     const updated = await prisma.unidadMedida.update({
-      where: { id },
+      where: { id: unitId },
       data: updateData,
       select: {
         id: true,
