@@ -78,8 +78,10 @@ model Sensor {
   estado           Boolean      @default(true)
   fuente_datos     String?
 
-  proyectos  ProyectoSensor[]
-  mediciones MedicionSensor[]
+  // Relación N:M con proyectos a través de ProyectoSensor
+  proyectos ProyectoSensor[]
+
+  // Ya no cuelgan mediciones directamente del sensor
 
   activo    Boolean  @default(true) // <- soft-delete
   createdAt DateTime @default(now())
@@ -101,8 +103,10 @@ model Actuador {
   estado           Boolean      @default(true)
   fuente_datos     String?
 
+  // Relación N:M con proyectos a través de ProyectoActuador
   proyectos ProyectoActuador[]
-  registros RegistroActuador[]
+
+  // Ya no cuelgan registros directamente del actuador
 
   activo    Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -131,102 +135,63 @@ model Proyecto {
 }
 
 // --- Tablas pivote (N:M) ---
+// Ahora las pivotes tienen su propio id y son dueñas de mediciones/registros
 
 model ProyectoSensor {
-  proyecto   Proyecto @relation(fields: [proyectoId], references: [project_id], onDelete: Cascade, onUpdate: Cascade)
+  id         Int @id @default(autoincrement())
+
   proyectoId Int
+  sensorId   Int
 
-  sensor   Sensor @relation(fields: [sensorId], references: [sensor_id], onDelete: Cascade, onUpdate: Cascade)
-  sensorId Int
+  proyecto Proyecto @relation(fields: [proyectoId], references: [project_id], onDelete: Cascade, onUpdate: Cascade)
+  sensor   Sensor   @relation(fields: [sensorId], references: [sensor_id], onDelete: Cascade, onUpdate: Cascade)
 
-  // Back-rel con la unión de mediciones N:M
-  medicionesProyecto ProyectoMedicion[] @relation("ProyectoSensor_to_ProyectoMedicion")
+  mediciones MedicionSensor[]
 
-  @@id([proyectoId, sensorId])
+  @@unique([proyectoId, sensorId]) // mismo sensor no se repite en el mismo proyecto
   @@index([sensorId])
 }
 
 model ProyectoActuador {
-  proyecto   Proyecto @relation(fields: [proyectoId], references: [project_id], onDelete: Cascade, onUpdate: Cascade)
-  proyectoId Int
+  id         Int @id @default(autoincrement())
 
-  actuador   Actuador @relation(fields: [actuadorId], references: [actuator_id], onDelete: Cascade, onUpdate: Cascade)
+  proyectoId Int
   actuadorId Int
 
-  // Back-rel con la unión de registros N:M
-  registrosProyecto ProyectoRegistro[] @relation("ProyectoActuador_to_ProyectoRegistro")
+  proyecto Proyecto @relation(fields: [proyectoId], references: [project_id], onDelete: Cascade, onUpdate: Cascade)
+  actuador Actuador @relation(fields: [actuadorId], references: [actuator_id], onDelete: Cascade, onUpdate: Cascade)
 
-  @@id([proyectoId, actuadorId])
+  registros RegistroActuador[]
+
+  @@unique([proyectoId, actuadorId])
   @@index([actuadorId])
 }
 
 // --- Lecturas / Registros ---
+// Cada medición/regsitro pertenece a un vínculo Proyecto–Sensor / Proyecto–Actuador
 
 model MedicionSensor {
-  id        Int      @id @default(autoincrement())
-  sensor    Sensor   @relation(fields: [sensorId], references: [sensor_id], onDelete: Cascade, onUpdate: Cascade)
-  sensorId  Int
+  id               Int @id @default(autoincrement())
+  proyectoSensorId Int
+
+  proyectoSensor ProyectoSensor @relation(fields: [proyectoSensorId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
   valor     Float
   timestamp DateTime @default(now())
 
-  // Back-rel a la unión N:M con proyectos
-  proyectos ProyectoMedicion[] @relation("MedicionSensor_to_ProyectoMedicion")
-
-  // Necesario para FK compuesta desde ProyectoMedicion
-  @@unique([id, sensorId])
-  @@index([sensorId])
+  @@index([proyectoSensorId])
   @@index([timestamp])
 }
 
 model RegistroActuador {
-  id         Int      @id @default(autoincrement())
-  actuador   Actuador @relation(fields: [actuadorId], references: [actuator_id], onDelete: Cascade, onUpdate: Cascade)
-  actuadorId Int
-  valor      Float
-  timestamp  DateTime @default(now())
+  id                 Int @id @default(autoincrement())
+  proyectoActuadorId Int
 
-  // Back-rel a la unión N:M con proyectos
-  proyectos ProyectoRegistro[] @relation("RegistroActuador_to_ProyectoRegistro")
+  proyectoActuador ProyectoActuador @relation(fields: [proyectoActuadorId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
-  // Necesario para FK compuesta desde ProyectoRegistro
-  @@unique([id, actuadorId])
-  @@index([actuadorId])
+  valor     Float
+  timestamp DateTime @default(now())
+
+  @@index([proyectoActuadorId])
   @@index([timestamp])
-}
-
-// --- NUEVAS tablas de unión N:M con integridad ---
-
-model ProyectoMedicion {
-  // Claves
-  proyectoId Int
-  sensorId   Int
-  medicionId Int
-
-  // (proyecto, sensor) válido
-  proyectoSensor ProyectoSensor @relation("ProyectoSensor_to_ProyectoMedicion", fields: [proyectoId, sensorId], references: [proyectoId, sensorId], onDelete: Restrict, onUpdate: Cascade)
-
-  // medición perteneciente al mismo sensor
-  medicion MedicionSensor @relation("MedicionSensor_to_ProyectoMedicion", fields: [medicionId, sensorId], references: [id, sensorId], onDelete: Cascade, onUpdate: Cascade)
-
-  // Evita duplicar el mismo vínculo dentro de un proyecto
-  @@id([proyectoId, medicionId])
-  @@index([sensorId])
-  @@index([medicionId])
-}
-
-model ProyectoRegistro {
-  // Claves
-  proyectoId Int
-  actuadorId Int
-  registroId Int
-
-  // (proyecto, actuador) válido
-  proyectoActuador ProyectoActuador @relation("ProyectoActuador_to_ProyectoRegistro", fields: [proyectoId, actuadorId], references: [proyectoId, actuadorId], onDelete: Restrict, onUpdate: Cascade)
-
-  // registro perteneciente al mismo actuador
-  registro RegistroActuador @relation("RegistroActuador_to_ProyectoRegistro", fields: [registroId, actuadorId], references: [id, actuadorId], onDelete: Cascade, onUpdate: Cascade)
-
-  @@id([proyectoId, registroId])
-  @@index([actuadorId])
-  @@index([registroId])
 }
