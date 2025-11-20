@@ -481,12 +481,12 @@ export default function DashboardPage() {
           open={openSensorDetails}
           sensorId={selectedSensorId}
           onClose={() => { setOpenSensorDetails(false); setSelectedSensorId(null); }}
-          onGoProjects={(sid) => {
-            // placeholder: más adelante podemos navegar o abrir otra vista
-            console.log('Ir a proyectos del sensor', sid);
+          onOpenProject={(projectId) => {
+            // Abrir el modal de proyecto
+            setSelectedProjectId(String(projectId));
+            setOpenProjectDetails(true);
           }}
           onGoLogs={(sid) => {
-            // placeholder: más adelante podemos navegar o abrir otra vista
             console.log('Ir a registro de mediciones del sensor', sid);
           }}
         />
