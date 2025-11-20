@@ -7,12 +7,13 @@ import ProjectForm, { type ProjectFormValues, type SimpleItem } from '../compone
 import SensorDetailsModal from '../components/SensorDetailsModal';
 import ActuatorDetailsModal from '../components/ActuatorDetailsModal';
 import ProjectDetailsModal from '../components/ProjectDetailsModal';
+import SensorMeasurementsModal from '../components/SensorMeasurementsModal';
 import Header from '../components/Header';
 
 type Item = { id: string; name: string };
 type Role = 'operator' | 'labManager' | 'admin';
 
-// Prefijo de API según entorno ('' en dev, '/a03' en prod)
+// Prefijo de API segÃºn entorno ('' en dev, '/a03' en prod)
 const BASE = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
 const api = (p: string) => `${BASE}${p}`;
 
@@ -21,7 +22,7 @@ export default function DashboardPage() {
   const [openActuador, setOpenActuador] = useState(false);
   const [openProyecto, setOpenProyecto] = useState(false);
 
-  // edición
+  // ediciÃ³n
   const [editingSensorId, setEditingSensorId] = useState<string | null>(null);
   const [editingActuatorId, setEditingActuatorId] = useState<string | null>(null);
   const [editingProyectoId, setEditingProyectoId] = useState<string | null>(null);
@@ -36,7 +37,7 @@ export default function DashboardPage() {
   const [actuadores, setActuadores] = useState<Item[]>([]);
   const [loading, setLoading] = useState({ proj: false, sens: false, act: false });
 
-  // Permisos por rol: por defecto 'desconocido' => sin mutación para evitar parpadeo
+  // Permisos por rol: por defecto 'desconocido' => sin mutaciÃ³n para evitar parpadeo
   const [role, setRole] = useState<Role | 'unknown'>('unknown');
   const canMutate = role === 'labManager' || role === 'admin';
 
@@ -47,6 +48,11 @@ export default function DashboardPage() {
   const [selectedActuatorId, setSelectedActuatorId] = useState<string | null>(null);
   const [openProjectDetails, setOpenProjectDetails] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+
+  // Modal de mediciones
+  const [openMeasurements, setOpenMeasurements] = useState(false);
+  const [measurementsSensorId, setMeasurementsSensorId] = useState<string | null>(null);
+  const [measurementsProjectId, setMeasurementsProjectId] = useState<number | null>(null);
 
   // ------- CARGA: Proyectos / Sensores / Actuadores -------
   const loadProjects = useCallback(async (includeInactive = false) => {
@@ -104,7 +110,7 @@ export default function DashboardPage() {
     loadProjects(false);
     loadSensores(false);
     loadActuadores(false);
-  }, [loadRole, loadProjects, loadSensores, loadActuadores]); // ← Ahora incluye las dependencias
+  }, [loadRole, loadProjects, loadSensores, loadActuadores]); // â† Ahora incluye las dependencias
 
   useEffect(() => {
     if (role === 'admin') {
@@ -112,7 +118,7 @@ export default function DashboardPage() {
       loadSensores(true);
       loadActuadores(true);
     }
-  }, [role, loadProjects, loadSensores, loadActuadores]); // ← Ahora incluye las dependencias
+  }, [role, loadProjects, loadSensores, loadActuadores]); // â† Ahora incluye las dependencias
 
   // ----------------- Crear / Editar Sensor -----------------
   const openNewSensor = () => {
@@ -130,7 +136,7 @@ export default function DashboardPage() {
     }
     const d = await res.json();
 
-    // Normalizá a strings lo que el form espera como texto
+    // NormalizÃ¡ a strings lo que el form espera como texto
     setSensorInitial({
       ...d,
       unidadMedida: d.unidadMedida ?? '',
@@ -172,7 +178,7 @@ export default function DashboardPage() {
         : api(`/api/actuators/${id}/usage`);
     const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) {
-      // Si el endpoint no existe o falla, devolvemos vacío para no romper el flujo.
+      // Si el endpoint no existe o falla, devolvemos vacÃ­o para no romper el flujo.
       return { projects: [] };
     }
     return res.json();
@@ -185,10 +191,10 @@ export default function DashboardPage() {
 
       if (projects?.length) {
         const nombres = projects.map(p => p.nombre).join(' - ');
-        const msg = `El elemento a eliminar está siendo utilizado en los proyectos: ${nombres}. ¿Desea continuar?`;
+        const msg = `El elemento a eliminar estÃ¡ siendo utilizado en los proyectos: ${nombres}. Â¿Desea continuar?`;
         if (!confirm(msg)) return;
       } else {
-        if (!confirm('¿Eliminar este sensor?')) return;
+        if (!confirm('Â¿Eliminar este sensor?')) return;
       }
 
       // DELETE (soft-delete en backend)
@@ -257,10 +263,10 @@ export default function DashboardPage() {
 
       if (projects?.length) {
         const nombres = projects.map(p => p.nombre).join(' - ');
-        const msg = `El elemento a eliminar está siendo utilizado en los proyectos: ${nombres}. ¿Desea continuar?`;
+        const msg = `El elemento a eliminar estÃ¡ siendo utilizado en los proyectos: ${nombres}. Â¿Desea continuar?`;
         if (!confirm(msg)) return;
       } else {
-        if (!confirm('¿Eliminar este actuador?')) return;
+        if (!confirm('Â¿Eliminar este actuador?')) return;
       }
 
       // DELETE (soft-delete en backend)
@@ -317,7 +323,7 @@ export default function DashboardPage() {
   };
 
   const handleDeleteProyecto = async (id: string) => {
-    if (!confirm('¿Eliminar este proyecto? Esta acción es permanente.')) return;
+    if (!confirm('Â¿Eliminar este proyecto? Esta acciÃ³n es permanente.')) return;
     const res = await fetch(api(`/api/projects/${id}`), { method: 'DELETE' });
     if (!res.ok && res.status !== 204) {
       const j = await res.json().catch(() => ({}));
@@ -330,7 +336,7 @@ export default function DashboardPage() {
   // Agregar estas funciones en page.tsx
 
   const handleReactivateSensor = async (id: string) => {
-    if (!confirm('¿Reactivar este sensor?')) return;
+    if (!confirm('Â¿Reactivar este sensor?')) return;
     const res = await fetch(api(`/api/sensors/${id}`), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -345,7 +351,7 @@ export default function DashboardPage() {
   };
 
   const handleReactivateActuator = async (id: string) => {
-    if (!confirm('¿Reactivar este actuador?')) return;
+    if (!confirm('Â¿Reactivar este actuador?')) return;
     const res = await fetch(api(`/api/actuators/${id}`), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -360,7 +366,7 @@ export default function DashboardPage() {
   };
 
   const handleReactivateProject = async (id: string) => {
-    if (!confirm('¿Reactivar este proyecto?')) return;
+    if (!confirm('Â¿Reactivar este proyecto?')) return;
     const res = await fetch(api(`/api/projects/${id}`), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -385,6 +391,19 @@ export default function DashboardPage() {
   const openSensorFromProject = (sensorId: number) => { setSelectedSensorId(String(sensorId)); setOpenSensorDetails(true); };
   const openActuatorFromProject = (actuatorId: number) => { setSelectedActuatorId(String(actuatorId)); setOpenActuatorDetails(true); };
 
+  // Handlers para mediciones
+  const handleOpenMeasurements = (sensorId: number, projectId?: number) => {
+    setMeasurementsSensorId(String(sensorId));
+    setMeasurementsProjectId(projectId ?? null);
+    setOpenMeasurements(true);
+  };
+
+  const handleCloseMeasurements = () => {
+    setOpenMeasurements(false);
+    setMeasurementsSensorId(null);
+    setMeasurementsProjectId(null);
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -392,7 +411,7 @@ export default function DashboardPage() {
         <div className="mx-auto max-w-7xl">
           <header className="mb-6">
             <h1 className="text-3xl font-bold text-blue-600 tracking-wide">Dashboard</h1>
-            <p className="text-gray-600">Administrá proyectos, sensores y actuadores.</p>
+            <p className="text-gray-600">AdministrÃ¡ proyectos, sensores y actuadores.</p>
           </header>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -403,7 +422,7 @@ export default function DashboardPage() {
               onAdd={openNewProyecto}
               onEdit={handleEditProyecto}
               onDelete={handleDeleteProyecto}
-              onReactivate={handleReactivateProject}  // ← AGREGAR
+              onReactivate={handleReactivateProject}
               onView={handleViewProject}
               canCreate={canMutate}
               canEdit={canMutate}
@@ -417,7 +436,7 @@ export default function DashboardPage() {
               onAdd={openNewSensor}
               onEdit={handleEditSensor}
               onDelete={handleDeleteSensor}
-              onReactivate={handleReactivateSensor}  // ← Agregado
+              onReactivate={handleReactivateSensor}
               onView={handleViewSensor}
               canCreate={canMutate}
               canEdit={canMutate}
@@ -431,7 +450,7 @@ export default function DashboardPage() {
               onAdd={openNewActuator}
               onEdit={handleEditActuator}
               onDelete={handleDeleteActuator}
-              onReactivate={handleReactivateActuator}  // ← Agregado
+              onReactivate={handleReactivateActuator}
               onView={handleViewActuator}
               canCreate={canMutate}
               canEdit={canMutate}
@@ -458,7 +477,7 @@ export default function DashboardPage() {
           open={openActuador}
           onRequestClose={() => { setOpenActuador(false); setEditingActuatorId(null); setActuatorInitial(undefined); }}
           tipo="actuador"
-          initialValues={editingActuatorId ? actuatorInitial : undefined}
+          initialValues={editingActuatorId  ? actuatorInitial : undefined}
           editingId={editingActuatorId ? Number(editingActuatorId) : undefined}
           onCancel={() => { setOpenActuador(false); setEditingActuatorId(null); setActuatorInitial(undefined); }}
           onSubmit={submitActuador}
@@ -486,9 +505,7 @@ export default function DashboardPage() {
             setSelectedProjectId(String(projectId));
             setOpenProjectDetails(true);
           }}
-          onGoLogs={(sid) => {
-            console.log('Ir a registro de mediciones del sensor', sid);
-          }}
+          onOpenMeasurements={(sensorId) => handleOpenMeasurements(sensorId)}
         />
         <ActuatorDetailsModal
           open={openActuatorDetails}
@@ -499,7 +516,7 @@ export default function DashboardPage() {
             setSelectedProjectId(String(projectId));
             setOpenProjectDetails(true);
           }}
-          onGoLogs={(aid) => console.log('Ir a registro de envíos del actuador', aid)}
+          onGoLogs={(aid) => console.log('Ir a registro de envÃ­os del actuador', aid)}
         />
         <ProjectDetailsModal
           open={openProjectDetails}
@@ -507,6 +524,19 @@ export default function DashboardPage() {
           onClose={() => { setOpenProjectDetails(false); setSelectedProjectId(null); }}
           onOpenSensor={openSensorFromProject}
           onOpenActuator={openActuatorFromProject}
+        />
+
+        {/* MODAL: Mediciones */}
+        <SensorMeasurementsModal
+          open={openMeasurements}
+          sensorId={measurementsSensorId}
+          projectId={measurementsProjectId}
+          onClose={handleCloseMeasurements}
+          onOpenProject={(projectId) => {
+            handleCloseMeasurements();
+            setSelectedProjectId(String(projectId));
+            setOpenProjectDetails(true);
+          }}
         />
       </main>
     </div>
