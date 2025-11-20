@@ -110,7 +110,7 @@ export default function SensorDetailsModal({
   open,
   sensorId,
   onClose,
-  onGoProjects,
+  // onGoProjects,
   onGoLogs,
   onOpenProject,
 }: Props) {
@@ -349,7 +349,10 @@ export default function SensorDetailsModal({
                           <li key={project.id}>
                             <button
                               type="button"
-                              onClick={() => onOpenProject?.(project.id)}
+                              onClick={() => {
+                                onOpenProject?.(project.id);
+                                onClose();
+                              }}
                               className="text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                               title="Ver detalle del proyecto"
                             >
