@@ -494,7 +494,11 @@ export default function DashboardPage() {
           open={openActuatorDetails}
           actuatorId={selectedActuatorId}
           onClose={() => { setOpenActuatorDetails(false); setSelectedActuatorId(null); }}
-          onGoProjects={(aid) => console.log('Ir a proyectos del actuador', aid)}
+          onOpenProject={(projectId) => {
+            // Abrir el modal de proyecto
+            setSelectedProjectId(String(projectId));
+            setOpenProjectDetails(true);
+          }}
           onGoLogs={(aid) => console.log('Ir a registro de envíos del actuador', aid)}
         />
         <ProjectDetailsModal

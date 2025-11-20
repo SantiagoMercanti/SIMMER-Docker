@@ -55,12 +55,18 @@ type ActuatorDetail = {
   updatedAt?: string;
 };
 
+type ProjectInfo = {
+  id: number;
+  nombre: string;
+};
+
 type Props = {
   open: boolean;
   actuatorId: string | null;
   onClose: () => void;
   onGoProjects?: (actuatorId: number) => void;
-  onGoLogs?: (actuatorId: number) => void; // “Registro de envíos”
+  onGoLogs?: (actuatorId: number) => void; // "Registro de envíos"
+  onOpenProject?: (projectId: number) => void; // Nueva prop para abrir modal de proyecto
 };
 
 const BASE = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
@@ -100,8 +106,9 @@ export default function ActuatorDetailsModal({
   open,
   actuatorId,
   onClose,
-  onGoProjects,
+  // onGoProjects,
   onGoLogs,
+  onOpenProject,
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState<ActuatorDetail | null>(null);
@@ -110,6 +117,11 @@ export default function ActuatorDetailsModal({
   // Input “Valor a enviar”
   const [sendValue, setSendValue] = useState<string>('');
   const [sendError, setSendError] = useState<string>('');
+
+  // Estado para la lista de proyectos
+  const [projects, setProjects] = useState<ProjectInfo[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [showProjects, setShowProjects] = useState(false);
 
   // Rol real desde el server
   const [role, setRole] = useState<Role>('operator');
@@ -167,6 +179,33 @@ export default function ActuatorDetailsModal({
     return () => { abort = true; };
   }, [open, actuatorId]);
 
+  // Cargar proyectos cuando se expande la sección
+  useEffect(() => {
+    if (!showProjects || !actuatorId) {
+      return;
+    }
+    let abort = false;
+    (async () => {
+      try {
+        setLoadingProjects(true);
+        const res = await fetch(api(`/api/actuators/${actuatorId}/usage`), { cache: 'no-store' });
+        if (!res.ok) throw new Error('No se pudieron obtener los proyectos');
+        const data = (await res.json()) as { projects: ProjectInfo[] };
+        if (!abort) {
+          setProjects(data.projects || []);
+        }
+      } catch (e) {
+        console.error(e);
+        if (!abort) {
+          setProjects([]);
+        }
+      } finally {
+        if (!abort) setLoadingProjects(false);
+      }
+    })();
+    return () => { abort = true; };
+  }, [showProjects, actuatorId]);
+
   const rangoEstable = useMemo(() => {
     if (!detail) return '—';
     const { valorMin, valorMax, unidad } = detail;
@@ -223,7 +262,7 @@ export default function ActuatorDetailsModal({
           </button>
         </div>
 
-        <div className="px-5 py-4">
+        <div className="px-5 py-4 max-h-[70vh] overflow-y-auto">
           {loading && <p className="text-sm text-gray-500">Cargando...</p>}
 
           {!loading && detail && (
@@ -319,6 +358,52 @@ export default function ActuatorDetailsModal({
                   <p className="text-gray-800">{updatedAtStr}</p>
                 </div>
               </div>
+
+              {/* Sección colapsable de proyectos */}
+              <div className="border-t pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowProjects(!showProjects)}
+                  className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                >
+                  <span className={`transform transition-transform ${showProjects ? 'rotate-90' : ''}`}>
+                    ▶
+                  </span>
+                  <span>Proyectos ({projects.length})</span>
+                </button>
+
+                {showProjects && (
+                  <div className="mt-2 ml-6">
+                    {loadingProjects && (
+                      <p className="text-sm text-gray-500">Cargando proyectos...</p>
+                    )}
+
+                    {!loadingProjects && projects.length === 0 && (
+                      <p className="text-sm text-gray-600">No hay proyectos asociados.</p>
+                    )}
+
+                    {!loadingProjects && projects.length > 0 && (
+                      <ul className="space-y-2">
+                        {projects.map((project) => (
+                          <li key={project.id}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onOpenProject?.(project.id);
+                                onClose(); // Cerrar el modal del actuador
+                              }}
+                              className="text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                              title="Ver detalle del proyecto"
+                            >
+                              {project.nombre}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -327,27 +412,12 @@ export default function ActuatorDetailsModal({
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => detail && onGoProjects?.(detail.id)}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              Proyectos
-            </button>
-            <button
-              type="button"
               onClick={() => detail && onGoLogs?.(detail.id)}
               className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               Registro de envíos
             </button>
           </div>
-
-          {/* <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            Cerrar
-          </button> */}
         </div>
       </div>
     </div>
