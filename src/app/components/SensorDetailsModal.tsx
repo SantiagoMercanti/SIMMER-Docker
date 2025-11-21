@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 type Role = 'operator' | 'labManager' | 'admin';
 
 type ApiSensorAnyCase = {
+  id?: number;  // ← API devuelve "id" directamente
   sensor_id?: number;
   sensorId?: number;
   nombre: string;
@@ -86,7 +87,7 @@ function normalizeSensor(data: ApiSensorAnyCase): SensorDetail {
   const valorMax = (data.valor_max ?? data.valorMax ?? null) as number | null;
   const valorMin = (data.valor_min ?? data.valorMin ?? null) as number | null;
   const fuente = (data.fuente_datos ?? data.fuenteDatos ?? null) as string | null;
-  const id = (data.sensor_id ?? data.sensorId ?? 0) as number;
+  const id = (data.id ?? data.sensor_id ?? data.sensorId ?? 0) as number;
 
   // fechas en orden de preferencia
   const cAt = data.createdAt ?? data.created_at ?? data.created;

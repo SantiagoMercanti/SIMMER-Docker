@@ -477,7 +477,7 @@ export default function DashboardPage() {
           open={openActuador}
           onRequestClose={() => { setOpenActuador(false); setEditingActuatorId(null); setActuatorInitial(undefined); }}
           tipo="actuador"
-          initialValues={editingActuatorId  ? actuatorInitial : undefined}
+          initialValues={editingActuatorId ? actuatorInitial : undefined}
           editingId={editingActuatorId ? Number(editingActuatorId) : undefined}
           onCancel={() => { setOpenActuador(false); setEditingActuatorId(null); setActuatorInitial(undefined); }}
           onSubmit={submitActuador}
