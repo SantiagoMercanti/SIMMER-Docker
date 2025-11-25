@@ -411,7 +411,7 @@ export default function DashboardPage() {
         <div className="mx-auto max-w-7xl">
           <header className="mb-6">
             <h1 className="text-3xl font-bold text-blue-600 tracking-wide">Dashboard</h1>
-            <p className="text-gray-600">AdministrÃ¡ proyectos, sensores y actuadores.</p>
+            <p className="text-gray-600">Administra proyectos, sensores y actuadores.</p>
           </header>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
