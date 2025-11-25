@@ -55,7 +55,7 @@ export default function SensorMeasurementsModal({
   const [error, setError] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('timestamp');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  
+
   const pageSize = 20;
   const maxMeasurements = 200;
 
@@ -73,7 +73,7 @@ export default function SensorMeasurementsModal({
       try {
         const url = api(`/api/sensors/${sensorId}/projects`);
         const res = await fetch(url, { cache: 'no-store' });
-        
+
         if (res.ok) {
           const json = await res.json();
           if (!abort && json.projects) {
@@ -105,28 +105,28 @@ export default function SensorMeasurementsModal({
       try {
         setLoading(true);
         setError(null);
-        
+
         const params = new URLSearchParams({
           page: String(currentPage),
           pageSize: String(pageSize),
           sortBy: sortField,
           sortDirection: sortDirection,
         });
-        
+
         if (selectedProjectId) {
           params.append('projectId', String(selectedProjectId));
         }
 
         const url = api(`/api/sensors/${sensorId}/measurements?${params}`);
         const res = await fetch(url, { cache: 'no-store' });
-        
+
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({ error: 'Error desconocido' }));
           throw new Error(errorData.error || 'No se pudieron obtener las mediciones');
         }
-        
+
         const json = (await res.json()) as MeasurementsResponse;
-        
+
         if (!abort) {
           setData(json);
         }
@@ -174,20 +174,20 @@ export default function SensorMeasurementsModal({
         sortBy: sortField,
         sortDirection: sortDirection,
       });
-      
+
       if (selectedProjectId) {
         params.append('projectId', String(selectedProjectId));
       }
 
       const url = api(`/api/sensors/${sensorId}/measurements?${params}`);
       const res = await fetch(url, { cache: 'no-store' });
-      
+
       if (!res.ok) {
         throw new Error('Error al descargar mediciones');
       }
-      
+
       const json = (await res.json()) as MeasurementsResponse;
-      
+
       const headers = ['#', 'Valor', 'Unidad', 'Proyecto', 'Fecha y Hora'];
       const rows = json.measurements.map((m, idx) => [
         String(idx + 1),
@@ -196,20 +196,20 @@ export default function SensorMeasurementsModal({
         m.proyectoNombre,
         formatDateFull(m.timestamp)
       ]);
-      
+
       const csvContent = [
         headers.join(','),
         ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
       ].join('\n');
-      
+
       const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       const downloadUrl = URL.createObjectURL(blob);
-      
+
       link.setAttribute('href', downloadUrl);
       link.setAttribute('download', `mediciones_${json.sensorNombre}_${new Date().toISOString().split('T')[0]}.csv`);
       link.style.visibility = 'hidden';
-      
+
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -223,7 +223,7 @@ export default function SensorMeasurementsModal({
   const formatDateFull = (timestamp: string) => {
     const date = new Date(timestamp);
     if (isNaN(date.getTime())) return '—';
-    
+
     return date.toLocaleString('es-AR', {
       day: '2-digit',
       month: '2-digit',
@@ -237,7 +237,7 @@ export default function SensorMeasurementsModal({
   const formatShortDate = (timestamp: string) => {
     const date = new Date(timestamp);
     if (isNaN(date.getTime())) return '—';
-    
+
     return date.toLocaleString('es-AR', {
       day: '2-digit',
       month: '2-digit',
@@ -276,7 +276,7 @@ export default function SensorMeasurementsModal({
         </svg>
       );
     }
-    
+
     return sortDirection === 'asc' ? (
       <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
@@ -326,7 +326,7 @@ export default function SensorMeasurementsModal({
               </button>
             </div>
           </div>
-          
+
           {/* Filtro de proyecto */}
           {projects.length > 0 && (
             <div className="mt-4">
@@ -381,8 +381,8 @@ export default function SensorMeasurementsModal({
                 />
               </svg>
               <p className="mt-2 text-gray-600">
-                {selectedProjectId 
-                  ? 'No hay mediciones para el proyecto seleccionado.' 
+                {selectedProjectId
+                  ? 'No hay mediciones para el proyecto seleccionado.'
                   : 'No hay mediciones registradas.'}
               </p>
             </div>
@@ -402,7 +402,7 @@ export default function SensorMeasurementsModal({
                   </div>
                 </div>
               )}
-              
+
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50 border-y border-gray-200 sticky top-0">
@@ -410,7 +410,7 @@ export default function SensorMeasurementsModal({
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider w-16">
                         #
                       </th>
-                      <th 
+                      <th
                         className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
                         onClick={() => handleSort('valor')}
                       >
@@ -422,7 +422,7 @@ export default function SensorMeasurementsModal({
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                         Unidad
                       </th>
-                      <th 
+                      <th
                         className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
                         onClick={() => handleSort('proyectoNombre')}
                       >
@@ -431,7 +431,7 @@ export default function SensorMeasurementsModal({
                           <SortIcon field="proyectoNombre" />
                         </div>
                       </th>
-                      <th 
+                      <th
                         className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
                         onClick={() => handleSort('timestamp')}
                       >
