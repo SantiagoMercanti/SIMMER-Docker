@@ -3,8 +3,10 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+const MAX_MEASUREMENTS = 200;
+
 // GET /api/sensors/:id/measurements
-// Query params: page, pageSize, projectId (opcional)
+// Query params: page, pageSize, projectId (opcional), sortBy, sortDirection
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -45,6 +47,13 @@ export async function GET(
     const page = Math.max(1, Number(searchParams.get('page')) || 1);
     const pageSize = Math.max(1, Math.min(100, Number(searchParams.get('pageSize')) || 20));
     const projectIdParam = searchParams.get('projectId');
+    const sortBy = searchParams.get('sortBy') || 'timestamp';
+    const sortDirection = searchParams.get('sortDirection') || 'desc';
+
+    // Validar sortBy
+    const validSortFields = ['valor', 'timestamp', 'proyectoNombre'];
+    const sortField = validSortFields.includes(sortBy) ? sortBy : 'timestamp';
+    const sortDir = sortDirection === 'asc' ? 'asc' : 'desc';
 
     // Construir filtros
     const whereClause: {
@@ -68,15 +77,34 @@ export async function GET(
       }
     }
 
-    // Contar total de mediciones
+    // Contar total de mediciones (limitado a MAX_MEASUREMENTS para mostrar)
     const totalCount = await prisma.medicionSensor.count({
       where: whereClause,
     });
 
-    const totalPages = Math.ceil(totalCount / pageSize);
+    // Limitar el total a MAX_MEASUREMENTS para la paginación
+    const limitedTotalCount = Math.min(totalCount, MAX_MEASUREMENTS);
+    const totalPages = Math.ceil(limitedTotalCount / pageSize);
     const skip = (page - 1) * pageSize;
 
-    // Obtener mediciones paginadas
+    // Construir orderBy según el campo seleccionado
+    let orderByClause: any;
+    
+    if (sortField === 'valor') {
+      orderByClause = { valor: sortDir };
+    } else if (sortField === 'timestamp') {
+      orderByClause = { timestamp: sortDir };
+    } else if (sortField === 'proyectoNombre') {
+      orderByClause = { 
+        proyectoSensor: { 
+          proyecto: { 
+            nombre: sortDir 
+          } 
+        } 
+      };
+    }
+
+    // Obtener mediciones paginadas con límite de MAX_MEASUREMENTS
     const measurements = await prisma.medicionSensor.findMany({
       where: whereClause,
       select: {
@@ -94,11 +122,9 @@ export async function GET(
           },
         },
       },
-      orderBy: {
-        timestamp: 'desc', // Más recientes primero
-      },
+      orderBy: orderByClause,
       skip,
-      take: pageSize,
+      take: Math.min(pageSize, MAX_MEASUREMENTS - skip), // No exceder MAX_MEASUREMENTS
     });
 
     // Formatear respuesta
@@ -116,7 +142,7 @@ export async function GET(
       pagination: {
         page,
         pageSize,
-        totalCount,
+        totalCount, // Total real
         totalPages,
       },
       sensorNombre: sensor.nombre,

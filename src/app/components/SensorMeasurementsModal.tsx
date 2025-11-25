@@ -22,6 +22,11 @@ type MeasurementsResponse = {
   sensorNombre: string;
 };
 
+type Project = {
+  id: number;
+  nombre: string;
+};
+
 type Props = {
   open: boolean;
   sensorId: string | null;
@@ -39,12 +44,13 @@ const api = (p: string) => `${BASE}${p}`;
 export default function SensorMeasurementsModal({
   open,
   sensorId,
-  projectId,
   onClose,
   onOpenProject,
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<MeasurementsResponse | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('timestamp');
@@ -53,6 +59,38 @@ export default function SensorMeasurementsModal({
   const pageSize = 20;
   const maxMeasurements = 200;
 
+  // Obtener lista de proyectos cuando se abre el modal
+  useEffect(() => {
+    if (!open || !sensorId) {
+      setProjects([]);
+      setSelectedProjectId(null);
+      return;
+    }
+
+    let abort = false;
+
+    (async () => {
+      try {
+        const url = api(`/api/sensors/${sensorId}/projects`);
+        const res = await fetch(url, { cache: 'no-store' });
+        
+        if (res.ok) {
+          const json = await res.json();
+          if (!abort && json.projects) {
+            setProjects(json.projects);
+          }
+        }
+      } catch (e) {
+        console.error('Error al cargar proyectos:', e);
+      }
+    })();
+
+    return () => {
+      abort = true;
+    };
+  }, [open, sensorId]);
+
+  // Obtener mediciones
   useEffect(() => {
     if (!open || !sensorId) {
       setData(null);
@@ -71,10 +109,12 @@ export default function SensorMeasurementsModal({
         const params = new URLSearchParams({
           page: String(currentPage),
           pageSize: String(pageSize),
+          sortBy: sortField,
+          sortDirection: sortDirection,
         });
         
-        if (projectId) {
-          params.append('projectId', String(projectId));
+        if (selectedProjectId) {
+          params.append('projectId', String(selectedProjectId));
         }
 
         const url = api(`/api/sensors/${sensorId}/measurements?${params}`);
@@ -106,66 +146,81 @@ export default function SensorMeasurementsModal({
     return () => {
       abort = true;
     };
-  }, [open, sensorId, projectId, currentPage]);
+  }, [open, sensorId, selectedProjectId, currentPage, sortField, sortDirection]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
       setSortField(field);
-      setSortDirection('desc');
+      setSortDirection(field === 'timestamp' ? 'desc' : 'asc');
+    }
+    setCurrentPage(1); // Resetear a página 1 al cambiar orden
+  };
+
+  const handleProjectChange = (projectId: string) => {
+    setSelectedProjectId(projectId === 'all' ? null : Number(projectId));
+    setCurrentPage(1); // Resetear a página 1 al cambiar filtro
+  };
+
+  const handleDownloadCSV = async () => {
+    if (!sensorId) return;
+    
+    try {
+      // Solicitar todas las mediciones para descarga (sin paginación)
+      const params = new URLSearchParams({
+        page: '1',
+        pageSize: String(maxMeasurements),
+        sortBy: sortField,
+        sortDirection: sortDirection,
+      });
+      
+      if (selectedProjectId) {
+        params.append('projectId', String(selectedProjectId));
+      }
+
+      const url = api(`/api/sensors/${sensorId}/measurements?${params}`);
+      const res = await fetch(url, { cache: 'no-store' });
+      
+      if (!res.ok) {
+        throw new Error('Error al descargar mediciones');
+      }
+      
+      const json = (await res.json()) as MeasurementsResponse;
+      
+      const headers = ['#', 'Valor', 'Unidad', 'Proyecto', 'Fecha y Hora'];
+      const rows = json.measurements.map((m, idx) => [
+        String(idx + 1),
+        String(m.valor),
+        m.unidadSimbolo,
+        m.proyectoNombre,
+        formatDateFull(m.timestamp)
+      ]);
+      
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+      ].join('\n');
+      
+      const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const downloadUrl = URL.createObjectURL(blob);
+      
+      link.setAttribute('href', downloadUrl);
+      link.setAttribute('download', `mediciones_${json.sensorNombre}_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(downloadUrl);
+    } catch (e) {
+      console.error('Error al descargar CSV:', e);
+      alert('Error al descargar el archivo CSV');
     }
   };
 
-  const sortedMeasurements = data?.measurements ? [...data.measurements].sort((a, b) => {
-    let comparison = 0;
-    
-    switch (sortField) {
-      case 'valor':
-        comparison = a.valor - b.valor;
-        break;
-      case 'timestamp':
-        comparison = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-        break;
-      case 'proyectoNombre':
-        comparison = a.proyectoNombre.localeCompare(b.proyectoNombre);
-        break;
-    }
-    
-    return sortDirection === 'asc' ? comparison : -comparison;
-  }) : [];
-
-  const handleDownloadCSV = () => {
-    if (!data) return;
-    
-    const headers = ['#', 'Valor', 'Unidad', 'Proyecto', 'Fecha y Hora'];
-    const rows = sortedMeasurements.map((m, idx) => [
-      String((currentPage - 1) * pageSize + idx + 1),
-      String(m.valor),
-      m.unidadSimbolo,
-      m.proyectoNombre,
-      formatDate(m.timestamp)
-    ]);
-    
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-    ].join('\n');
-    
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    
-    link.setAttribute('href', url);
-    link.setAttribute('download', `mediciones_${data.sensorNombre}_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const formatDate = (timestamp: string) => {
+  const formatDateFull = (timestamp: string) => {
     const date = new Date(timestamp);
     if (isNaN(date.getTime())) return '—';
     
@@ -208,7 +263,7 @@ export default function SensorMeasurementsModal({
     Math.ceil(maxMeasurements / pageSize)
   );
 
-  const showingUpTo = Math.min(currentPage * pageSize, maxMeasurements);
+  const showingUpTo = Math.min(currentPage * pageSize, maxMeasurements, data?.pagination.totalCount || 0);
   const hasMoreThanMax = (data?.pagination.totalCount || 0) > maxMeasurements;
 
   if (!open) return null;
@@ -237,39 +292,62 @@ export default function SensorMeasurementsModal({
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4">
       <div className="w-full max-w-5xl rounded-lg bg-white shadow-xl max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between border-b px-6 py-4 flex-shrink-0 bg-gray-50">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">
-              Registro de Mediciones
-            </h3>
-            {data && (
-              <p className="text-sm text-gray-600 mt-0.5">
-                Sensor: <span className="font-medium">{data.sensorNombre}</span>
-                {projectId && ' (filtrado por proyecto)'}
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            {data && data.measurements.length > 0 && (
+        <div className="border-b px-6 py-4 flex-shrink-0 bg-gray-50">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Registro de Mediciones
+              </h3>
+              {data && (
+                <p className="text-sm text-gray-600 mt-0.5">
+                  Sensor: <span className="font-medium">{data.sensorNombre}</span>
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              {data && data.measurements.length > 0 && (
+                <button
+                  onClick={handleDownloadCSV}
+                  className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+                  title="Descargar registro completo"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Descargar CSV
+                </button>
+              )}
               <button
-                onClick={handleDownloadCSV}
-                className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
-                title="Descargar mediciones visibles"
+                onClick={onClose}
+                className="rounded-md p-2 text-gray-500 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                aria-label="Cerrar modal"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Descargar CSV
+                ✕
               </button>
-            )}
-            <button
-              onClick={onClose}
-              className="rounded-md p-2 text-gray-500 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-              aria-label="Cerrar modal"
-            >
-              ✕
-            </button>
+            </div>
           </div>
+          
+          {/* Filtro de proyecto */}
+          {projects.length > 0 && (
+            <div className="mt-4">
+              <label htmlFor="project-filter" className="block text-sm font-medium text-gray-700 mb-1">
+                Filtrar por proyecto:
+              </label>
+              <select
+                id="project-filter"
+                value={selectedProjectId || 'all'}
+                onChange={(e) => handleProjectChange(e.target.value)}
+                className="block w-full max-w-xs rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm py-2 px-3 border"
+              >
+                <option value="all">Todos los proyectos</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Content */}
@@ -302,7 +380,11 @@ export default function SensorMeasurementsModal({
                   d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                 />
               </svg>
-              <p className="mt-2 text-gray-600">No hay mediciones registradas.</p>
+              <p className="mt-2 text-gray-600">
+                {selectedProjectId 
+                  ? 'No hay mediciones para el proyecto seleccionado.' 
+                  : 'No hay mediciones registradas.'}
+              </p>
             </div>
           )}
 
@@ -315,7 +397,7 @@ export default function SensorMeasurementsModal({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <p className="text-sm text-amber-800">
-                      <span className="font-medium">Mostrando las últimas {maxMeasurements} mediciones.</span> Este sensor tiene {data.pagination.totalCount} mediciones en total. Use el botón Descargar CSV para obtener el registro completo.
+                      <span className="font-medium">Mostrando las {maxMeasurements} mediciones más {sortDirection === 'desc' && sortField === 'timestamp' ? 'recientes' : 'relevantes'}.</span> Este sensor tiene {data.pagination.totalCount} mediciones en total. Use el botón Descargar CSV para obtener el registro completo.
                     </p>
                   </div>
                 </div>
@@ -361,7 +443,7 @@ export default function SensorMeasurementsModal({
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {sortedMeasurements.map((m, index) => (
+                    {data.measurements.map((m, index) => (
                       <tr key={m.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-500">
                           {(currentPage - 1) * pageSize + index + 1}
