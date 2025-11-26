@@ -37,13 +37,16 @@ model UserMetadata {
   nombre    String
   apellido  String
   tipo      Role     @default(operator)
-  email     String // <- quitamos @unique para permitir duplicado cuando uno está inactivo
+  email     String
   password  String
-  activo    Boolean  @default(true) // <- soft-delete
+  activo    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([email, activo]) // permite reutilizar email si el anterior quedó inactivo
+  // registros de actuadores que hizo este usuario
+  registrosActuador RegistroActuador[]
+
+  @@unique([email, activo])
   @@index([tipo])
   @@index([createdAt])
   @@index([activo])
@@ -192,6 +195,11 @@ model RegistroActuador {
   valor     Float
   timestamp DateTime @default(now())
 
+  // quién hizo el envío
+  usuarioId String?
+  usuario   UserMetadata? @relation(fields: [usuarioId], references: [id])
+
   @@index([proyectoActuadorId])
   @@index([timestamp])
+  @@index([usuarioId])
 }
