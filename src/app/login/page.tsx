@@ -5,6 +5,6 @@ import LoginClient from './LoginClient';
 // (opcional)
 export const runtime = 'nodejs';
 
-export default function Page() {
+export default function LoginPage() {
   return <LoginClient />;
 }

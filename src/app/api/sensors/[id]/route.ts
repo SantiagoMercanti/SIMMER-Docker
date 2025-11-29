@@ -1,120 +1,220 @@
-export const runtime = 'nodejs';
-
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { requireAuth, isManagerOrAdmin } from '@/lib/auth';
+import { requireCanMutate, requireAdmin } from '@/lib/auth';
 
-function toDecimal(val: unknown): Prisma.Decimal | undefined {
-  if (val === null || val === undefined || val === '') return undefined;
-  const num = typeof val === 'number' ? val : parseFloat(String(val));
-  if (Number.isNaN(num)) return undefined;
-  return new Prisma.Decimal(num);
-}
-
-function parseId(id: string | string[] | undefined): number | null {
-  if (!id || Array.isArray(id)) return null;
+function toIntId(id: string) {
   const n = Number(id);
   return Number.isInteger(n) ? n : null;
 }
 
-function getStatus(e: unknown, fallback = 500): number {
-  if (typeof e === 'object' && e !== null && 'status' in e) {
-    const s = (e as { status?: unknown }).status;
-    if (typeof s === 'number') return s;
+// GET /api/sensors/:id
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const intId = toIntId(id);
+  if (intId === null) {
+    return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
   }
-  return fallback;
-}
 
-/** GET /api/sensors/:id - Solo usuarios autenticados (>= operator) */
-export async function GET(_: Request, { params }: { params: { id: string } }) {
   try {
-    await requireAuth();
-    const sensorId = parseId(params.id);
-    if (sensorId == null) {
-      return NextResponse.json({ message: 'ID inválido' }, { status: 400 });
-    }
-
-    const sensor = await prisma.sensor.findUnique({
-      where: { sensor_id: sensorId },
+    const s = await prisma.sensor.findUnique({
+      where: { sensor_id: intId },
+      select: {
+        sensor_id: true,
+        nombre: true,
+        descripcion: true,
+        unidad_medida_id: true,  // ← ID de la unidad
+        unidadMedida: {          // ← Relación con UnidadMedida
+          select: {
+            id: true,
+            nombre: true,
+            simbolo: true,
+            categoria: true,
+          }
+        },
+        valor_min: true,
+        valor_max: true,
+        estado: true,
+        fuente_datos: true,
+        createdAt: true,
+        updatedAt: true,
+        activo: true,
+      },
     });
 
-    if (!sensor) {
-      return NextResponse.json({ message: 'No encontrado' }, { status: 404 });
+    if (!s) {
+      return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
     }
 
-    return NextResponse.json(sensor);
-  } catch (e: unknown) {
-    const status = getStatus(e, 500);
-    const message = status === 401 ? 'No autenticado' : 'Error al obtener sensor';
-    return NextResponse.json({ message }, { status });
+    // Si está inactivo, solo admin puede verlo
+    if (!s.activo) {
+      try {
+        await requireAdmin();
+      } catch {
+        return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
+      }
+    }
+
+    // Devolver con la información de la unidad
+    return NextResponse.json({
+      id: s.sensor_id,
+      nombre: s.nombre,
+      descripcion: s.descripcion ?? null,
+      unidadMedidaId: s.unidad_medida_id,
+      unidadMedida: s.unidadMedida,  // ← Objeto completo de la unidad
+      valorMin: s.valor_min ?? null,
+      valorMax: s.valor_max ?? null,
+      estado: Boolean(s.estado),
+      fuenteDatos: s.fuente_datos ?? null,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+    });
+  } catch (_err: unknown) {
+    console.error('Error en GET /api/sensors/:id', _err);
+    return NextResponse.json({ error: 'Error del servidor' }, { status: 500 });
   }
 }
 
-/** PUT /api/sensors/:id - Solo labManager/admin */
-export async function PUT(req: Request, { params }: { params: { id: string } }) {
-  try {
-    const { role } = await requireAuth();
-    if (!isManagerOrAdmin(role)) {
-      return NextResponse.json({ message: 'No autorizado' }, { status: 403 });
-    }
+// PATCH /api/sensors/:id
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const intId = toIntId(id);
+  if (intId === null) {
+    return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
+  }
 
-    const sensorId = parseId(params.id);
-    if (sensorId == null) {
-      return NextResponse.json({ message: 'ID inválido' }, { status: 400 });
-    }
+  try {
+    // Bloquea a 'operator' y lanza 401 si no hay sesión
+    await requireCanMutate();
 
     const body = await req.json();
-    const data = {
-      nombre: body?.nombre !== undefined ? String(body.nombre).trim() : undefined,
-      descripcion: body?.descripcion !== undefined ? String(body.descripcion) : undefined,
-      unidad_de_medida:
-        body?.unidad_de_medida !== undefined ? String(body.unidad_de_medida).trim() : undefined,
-      valor_max: body?.valor_max !== undefined ? toDecimal(body.valor_max) : undefined,
-      valor_min: body?.valor_min !== undefined ? toDecimal(body.valor_min) : undefined,
-      estado: body?.estado !== undefined ? Boolean(body.estado) : undefined,
-      fuente_datos: body?.fuente_datos !== undefined ? String(body.fuente_datos) : undefined,
-    };
+
+    // Campos opcionales (actualización parcial)
+    const nombre: string | undefined = body?.nombre?.trim?.() || undefined;
+    const unidadMedidaId: number | undefined = body?.unidadMedidaId;  // ← CAMBIO
+    const descripcionRaw: unknown = body?.descripcion;
+    const fuenteDatosRaw: unknown = body?.fuenteDatos;
+
+    // Normalizamos opcionales string -> string|null
+    const descripcion =
+      typeof descripcionRaw === 'string'
+        ? (descripcionRaw.trim() || null)
+        : undefined; // undefined = no tocar; null = setear a null
+    const fuenteDatos =
+      typeof fuenteDatosRaw === 'string'
+        ? (fuenteDatosRaw.trim() || null)
+        : undefined;
+
+    // Numéricos opcionales: si vienen deben ser válidos
+    let valorMin: number | undefined;
+    let valorMax: number | undefined;
+
+    if (body?.valorMin !== undefined && body?.valorMin !== '') {
+      const n = Number(body.valorMin);
+      if (Number.isNaN(n)) {
+        return NextResponse.json({ error: 'valorMin debe ser numérico' }, { status: 400 });
+      }
+      valorMin = n;
+    }
+
+    if (body?.valorMax !== undefined && body?.valorMax !== '') {
+      const n = Number(body.valorMax);
+      if (Number.isNaN(n)) {
+        return NextResponse.json({ error: 'valorMax debe ser numérico' }, { status: 400 });
+      }
+      valorMax = n;
+    }
+
+    // Si vinieron ambos, validamos relación
+    if (valorMin !== undefined && valorMax !== undefined && valorMin > valorMax) {
+      return NextResponse.json({ error: 'valorMax debe ser ≥ valorMin' }, { status: 400 });
+    }
+
+    // Construimos el objeto de actualización SOLO con lo presente
+    const data: Record<string, unknown> = {};
+    if (nombre !== undefined) data.nombre = nombre;
+    if (descripcion !== undefined) data.descripcion = descripcion; // string|null
+    if (unidadMedidaId !== undefined) data.unidad_medida_id = unidadMedidaId;  // ← CAMBIO+    
+    if (valorMin !== undefined) data.valor_min = valorMin;
+    if (valorMax !== undefined) data.valor_max = valorMax;
+    if (fuenteDatos !== undefined) data.fuente_datos = fuenteDatos; // string|null
+
+    // --- Reactivación (solo admin) ---
+    if (body?.activo !== undefined) {
+      // Permitimos únicamente setear a true por PATCH
+      if (body.activo === true) {
+        try {
+          await requireAdmin();
+        } catch (err: unknown) {
+          const status = (err as { status?: number })?.status ?? 403;
+          const msg = status === 401 ? 'No autenticado' : 'Solo admin puede reactivar sensores';
+          return NextResponse.json({ error: msg }, { status });
+        }
+        data.activo = true; // ← reactivación
+      } else if (body.activo === false) {
+        // Desactivar NO por PATCH: se hace por DELETE (soft-delete)
+        return NextResponse.json({ error: 'Para desactivar use DELETE /api/sensors/:id' }, { status: 400 });
+      } else {
+        return NextResponse.json({ error: 'activo debe ser booleano' }, { status: 400 });
+      }
+    }
+
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ error: 'Sin cambios' }, { status: 400 });
+    }
 
     const updated = await prisma.sensor.update({
-      where: { sensor_id: sensorId },
+      where: { sensor_id: intId },
       data,
     });
 
     return NextResponse.json(updated);
-  } catch (e: unknown) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
-      return NextResponse.json({ message: 'No encontrado' }, { status: 404 });
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status ?? 0;
+    if (status === 401) return NextResponse.json({ error: 'No autenticado' }, { status });
+    if (status === 403) return NextResponse.json({ error: 'No tienes permisos para editar sensores' }, { status });
+
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
     }
-    console.error('PUT /api/sensors/[id]', e);
-    const status = getStatus(e, 500);
-    const message = status === 401 ? 'No autenticado' : 'Error al actualizar sensor';
-    return NextResponse.json({ message }, { status });
+    return NextResponse.json({ error: 'Actualización fallida' }, { status: 400 });
   }
 }
 
-/** DELETE /api/sensors/:id - Solo labManager/admin */
-export async function DELETE(_: Request, { params }: { params: { id: string } }) {
+// DELETE /api/sensors/:id
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const intId = toIntId(id);
+  if (intId === null) {
+    return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
+  }
+
   try {
-    const { role } = await requireAuth();
-    if (!isManagerOrAdmin(role)) {
-      return NextResponse.json({ message: 'No autorizado' }, { status: 403 });
-    }
+    // Bloquea a 'operator' y lanza 401 si no hay sesión
+    await requireCanMutate();
 
-    const sensorId = parseId(params.id);
-    if (sensorId == null) {
-      return NextResponse.json({ message: 'ID inválido' }, { status: 400 });
-    }
+    await prisma.sensor.update({
+      where: { sensor_id: intId },
+      data: { activo: false },
+    });
+    return NextResponse.json({ ok: true });
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status ?? 0;
+    if (status === 401) return NextResponse.json({ error: 'No autenticado' }, { status });
+    if (status === 403) return NextResponse.json({ error: 'No tienes permisos para eliminar sensores' }, { status });
 
-    await prisma.sensor.delete({ where: { sensor_id: sensorId } });
-    return NextResponse.json({ message: 'Eliminado' });
-  } catch (e: unknown) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
-      return NextResponse.json({ message: 'No encontrado' }, { status: 404 });
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
     }
-    console.error('DELETE /api/sensors/[id]', e);
-    const status = getStatus(e, 500);
-    const message = status === 401 ? 'No autenticado' : 'Error al eliminar sensor';
-    return NextResponse.json({ message }, { status });
+    return NextResponse.json({ error: 'Eliminación fallida' }, { status: 400 });
   }
 }

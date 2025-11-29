@@ -1,12 +1,11 @@
-
 // generator y datasource
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "mysql"
-  url      = env("DATABASE_URL")
+  provider          = "mysql"
+  url               = env("DATABASE_URL")
   shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
@@ -17,119 +16,203 @@ enum Role {
   admin
 }
 
+enum CategoriaUnidad {
+  temperatura
+  presion
+  volumen
+  masa
+  tiempo
+  velocidad
+  concentracion
+  pH
+  flujo
+  frecuencia
+  porcentaje
+  otra
+}
+
 // --- Usuario / Perfil ---
 model UserMetadata {
   id        String   @id @default(uuid())
   nombre    String
   apellido  String
   tipo      Role     @default(operator)
-  email     String   @unique
-  password  String   // <-- guardar hash (bcrypt)
+  email     String
+  password  String
+  activo    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // registros de actuadores que hizo este usuario
+  registrosActuador RegistroActuador[]
+
+  @@unique([email, activo])
   @@index([tipo])
   @@index([createdAt])
+  @@index([activo])
 }
 
 // --- Sensores / Actuadores / Proyectos ---
 
+model UnidadMedida {
+  id        Int             @id @default(autoincrement())
+  nombre    String // ej: "Grados Celsius"
+  simbolo   String          // ej: "°C"
+  categoria CategoriaUnidad
+  activo    Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  sensores   Sensor[]
+  actuadores Actuador[]
+
+  @@index([activo])
+  @@index([categoria])
+}
+
 model Sensor {
-  sensor_id        Int               @id @default(autoincrement())
+  sensor_id        Int          @id @default(autoincrement())
   nombre           String
   descripcion      String?
-  unidad_de_medida String
-  valor_max        Decimal?          @db.Decimal(18,6)
-  valor_min        Decimal?          @db.Decimal(18,6)
-  estado           Boolean           @default(true)
+  unidad_medida_id Int
+  unidadMedida     UnidadMedida @relation(fields: [unidad_medida_id], references: [id])
+  valor_max        Float
+  valor_min        Float
+  estado           Boolean      @default(true)
   fuente_datos     String?
 
-  proyectos        ProyectoSensor[]
-  mediciones       MedicionSensor[]
+  // Relación N:M con proyectos a través de ProyectoSensor
+  proyectos ProyectoSensor[]
 
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  // Ya no cuelgan mediciones directamente del sensor
+
+  activo    Boolean  @default(true) // <- soft-delete
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([nombre])
+  @@index([activo])
+  @@index([unidad_medida_id])
 }
 
 model Actuador {
-  actuator_id      Int                @id @default(autoincrement())
+  actuator_id      Int          @id @default(autoincrement())
   nombre           String
   descripcion      String?
-  unidad_de_medida String
-  valor_max        Decimal?           @db.Decimal(18,6)
-  valor_min        Decimal?           @db.Decimal(18,6)
-  estado           Boolean            @default(true)
+  unidad_medida_id Int
+  unidadMedida     UnidadMedida @relation(fields: [unidad_medida_id], references: [id])
+  valor_max        Float
+  valor_min        Float
+  estado           Boolean      @default(true)
   fuente_datos     String?
 
-  proyectos        ProyectoActuador[]
-  registros        RegistroActuador[]
+  // Relación N:M con proyectos a través de ProyectoActuador
+  proyectos ProyectoActuador[]
 
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  // Ya no cuelgan registros directamente del actuador
+
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([nombre])
+  @@index([activo])
+  @@index([unidad_medida_id]) // ← índice para la FK
 }
 
 model Proyecto {
-  project_id  Int                @id @default(autoincrement())
+  project_id  Int     @id @default(autoincrement())
   nombre      String
   descripcion String?
 
-  sensores    ProyectoSensor[]
-  actuadores  ProyectoActuador[]
+  sensores   ProyectoSensor[]
+  actuadores ProyectoActuador[]
 
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  estado    Boolean  @default(true)
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([nombre])
+  @@index([activo])
 }
 
 // --- Tablas pivote (N:M) ---
+// Ahora las pivotes tienen su propio id y son dueñas de mediciones/registros
 
 model ProyectoSensor {
-  proyecto    Proyecto @relation(fields: [proyectoId], references: [project_id], onDelete: Cascade, onUpdate: Cascade)
-  proyectoId  Int
+  id         Int @id @default(autoincrement())
 
-  sensor      Sensor   @relation(fields: [sensorId], references: [sensor_id], onDelete: Cascade, onUpdate: Cascade)
-  sensorId    Int
+  proyectoId Int
+  sensorId   Int
 
-  @@id([proyectoId, sensorId])
+  proyecto Proyecto @relation(fields: [proyectoId], references: [project_id], onDelete: Cascade, onUpdate: Cascade)
+  sensor   Sensor   @relation(fields: [sensorId], references: [sensor_id], onDelete: Cascade, onUpdate: Cascade)
+
+  mediciones MedicionSensor[]
+
+  @@unique([proyectoId, sensorId]) // mismo sensor no se repite en el mismo proyecto
   @@index([sensorId])
 }
 
 model ProyectoActuador {
-  proyecto    Proyecto @relation(fields: [proyectoId], references: [project_id], onDelete: Cascade, onUpdate: Cascade)
-  proyectoId  Int
+  id         Int @id @default(autoincrement())
 
-  actuador    Actuador @relation(fields: [actuadorId], references: [actuator_id], onDelete: Cascade, onUpdate: Cascade)
-  actuadorId  Int
+  proyectoId Int
+  actuadorId Int
 
-  @@id([proyectoId, actuadorId])
+  proyecto Proyecto @relation(fields: [proyectoId], references: [project_id], onDelete: Cascade, onUpdate: Cascade)
+  actuador Actuador @relation(fields: [actuadorId], references: [actuator_id], onDelete: Cascade, onUpdate: Cascade)
+
+  registros RegistroActuador[]
+
+  @@unique([proyectoId, actuadorId])
   @@index([actuadorId])
 }
 
 // --- Lecturas / Registros ---
+// Cada medición/regsitro pertenece a un vínculo Proyecto–Sensor / Proyecto–Actuador
 
 model MedicionSensor {
-  id        Int      @id @default(autoincrement())
-  sensor    Sensor   @relation(fields: [sensorId], references: [sensor_id], onDelete: Cascade, onUpdate: Cascade)
-  sensorId  Int
-  valor     Decimal  @db.Decimal(18,6)
+  id               Int @id @default(autoincrement())
+  proyectoSensorId Int
+
+  proyectoSensor ProyectoSensor @relation(fields: [proyectoSensorId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  valor     Float
   timestamp DateTime @default(now())
 
-  @@index([sensorId])
+  @@index([proyectoSensorId])
   @@index([timestamp])
 }
 
 model RegistroActuador {
-  id         Int      @id @default(autoincrement())
-  actuador   Actuador @relation(fields: [actuadorId], references: [actuator_id], onDelete: Cascade, onUpdate: Cascade)
-  actuadorId Int
-  estado     String   // ej: "ON" | "OFF" | "AUTO" | "MANUAL" (si querés, lo pasamos a enum)
-  timestamp  DateTime @default(now())
+  id                 Int @id @default(autoincrement())
+  proyectoActuadorId Int
 
-  @@index([actuadorId])
+  proyectoActuador ProyectoActuador @relation(fields: [proyectoActuadorId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  valor     Float
+  timestamp DateTime @default(now())
+
+  // quién hizo el envío
+  usuarioId String?
+  usuario   UserMetadata? @relation(fields: [usuarioId], references: [id])
+
+  @@index([proyectoActuadorId])
   @@index([timestamp])
+  @@index([usuarioId])
+}
+
+model PasswordReset {
+  id        String   @id @default(uuid())
+  email     String
+  code      String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([code])
+  @@index([expiresAt])
 }

@@ -3,6 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+const BASE = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
+const api = (p: string) => `${BASE}${p}`;
+
 export default function LoginClient() {
   const router = useRouter();
 
@@ -20,7 +23,7 @@ export default function LoginClient() {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/login', {
+      const res = await fetch(api('/api/public/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -41,11 +44,13 @@ export default function LoginClient() {
     }
   };
 
-  // Opción A: si querés ocultar el UI hasta montar para evitar extensiones que inyectan atributos
   if (!mounted) return null;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4" suppressHydrationWarning>
+    <div
+      className="min-h-screen flex items-center justify-center bg-gray-100 px-4"
+      suppressHydrationWarning
+    >
       <div className="bg-white shadow-md rounded-lg p-8 w-full max-w-md">
         <h1 className="text-4xl font-bold text-blue-600 text-center mb-2 tracking-wide">
           SIMMER
@@ -117,6 +122,15 @@ export default function LoginClient() {
               Regístrate
             </button>
           </p>
+        </div>
+        <div className="text-center">
+          <button
+            type="button"
+            onClick={() => router.push('/forgot-password')}
+            className="text-sm text-blue-600 hover:underline"
+          >
+            ¿Olvidaste tu contraseña?
+          </button>
         </div>
       </div>
     </div>

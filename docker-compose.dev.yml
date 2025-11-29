@@ -1,0 +1,47 @@
+version: "3.9"
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: simmer_db_dev
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: simmer_db_despliegue
+      MYSQL_USER: simmer
+      MYSQL_PASSWORD: simmer_password
+    ports:
+      - "3306:3306" # opcional exponer al host
+    volumes:
+      - db_data_dev:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    container_name: simmer_app_dev
+    restart: always
+    env_file:
+      - .env.docker               # << usamos host db:3306 aquí
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - .:/app                    # hot reload
+      - /app/node_modules         # evita que el node_modules del host tape al del contenedor
+    # Ejecuta migraciones y luego el seed (idempotente) antes de levantar Next.js
+    command: sh -c "npx prisma migrate dev && npx prisma db seed && npm run dev"
+    environment:
+      CHOKIDAR_USEPOLLING: "true" # ayuda en Windows/OneDrive
+      WATCHPACK_POLLING: "true"
+
+volumes:
+  db_data_dev:

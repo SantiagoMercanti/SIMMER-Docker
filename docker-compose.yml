@@ -1,0 +1,34 @@
+
+# DE MOMENTO DEPRECADO
+
+version: "3.9"
+
+services:
+  app:
+    build: .
+    image: simmer-app:latest
+    container_name: simmer_app
+    restart: always
+    ports:
+      - "3000:3000"         # Puede mapearse a otro puerto/host
+    env_file:
+      - .env.production     # usa variables para producción
+    depends_on:
+      - db
+
+  db:
+    image: mysql:8.0
+    container_name: db_simmer_despliegue
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: simmer_db_despliegue
+      MYSQL_USER: simmer
+      MYSQL_PASSWORD: simmer_password
+    ports:
+      - "3306:3306"         # opcional exponer a host
+    volumes:
+      - db_data_simmer_db_despliegue:/var/lib/mysql
+
+volumes:
+  db_data_simmer_db_despliegue:

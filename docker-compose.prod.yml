@@ -1,0 +1,70 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: simmer_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-simmer_db_despliegue}
+      MYSQL_USER: ${MYSQL_USER:-simmer}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-simmer_password}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: [ "CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent" ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prod
+      args:
+        BASE_PATH: "/a03"
+        NEXT_PUBLIC_BASE_PATH: "/a03"
+    image: simmer-app:prod
+    container_name: simmer_app
+    restart: always
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: "production"
+      # Asegurate que .env.production contenga BASE_PATH=/a03 y NEXT_PUBLIC_BASE_PATH=/a03 si tu app los usa en runtime.
+    expose:
+      - "3000"           # <- solo visible para la red interna del compose
+    depends_on:
+      db:
+        condition: service_healthy
+    # ❗️Sin 'command': se usa el CMD del Dockerfile (migrate deploy + node server.js)
+
+  nginx:
+    image: nginx:stable
+    container_name: simmer_nginx
+    restart: always
+    depends_on:
+      - app
+    ports:
+      - "80:80"          # <- expone el reverse proxy
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: simmer_phpmyadmin
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      PMA_ABSOLUTE_URI: http://localhost:8080/
+      PMA_USER: ${MYSQL_USER:-simmer}
+      PMA_PASSWORD: ${MYSQL_PASSWORD:-simmer_password}
+    ports:
+      - "127.0.0.1:8080:80" # solo en localhost
+
+volumes:
+  db_data:
