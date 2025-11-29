@@ -1,7 +1,19 @@
+// Ubicación: src/app/api/actuators/[id]/records/route.ts
+
 import { NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
 const MAX_RECORDS = 200;
+
+const validSortFields = [
+  'valor',
+  'timestamp',
+  'proyectoNombre',
+  'usuarioEmail',
+] as const;
+
+type SortField = (typeof validSortFields)[number];
 
 // GET /api/actuators/:id/records
 // Query params: page, pageSize, projectId (opcional), usuarioId (opcional), sortBy, sortDirection
@@ -14,7 +26,10 @@ export async function GET(
     const actuadorId = Number(id);
 
     if (!Number.isInteger(actuadorId) || actuadorId <= 0) {
-      return NextResponse.json({ error: 'ID de actuador inválido' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'ID de actuador inválido' },
+        { status: 400 }
+      );
     }
 
     // Verificar que el actuador existe y está activo
@@ -33,58 +48,71 @@ export async function GET(
     });
 
     if (!actuador) {
-      return NextResponse.json({ error: 'Actuador no encontrado' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'Actuador no encontrado' },
+        { status: 404 }
+      );
     }
 
     if (!actuador.activo) {
-      return NextResponse.json({ error: 'Actuador inactivo' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'Actuador inactivo' },
+        { status: 404 }
+      );
     }
 
     // Parsear query params
     const { searchParams } = new URL(req.url);
     const page = Math.max(1, Number(searchParams.get('page')) || 1);
-    const pageSize = Math.max(1, Math.min(100, Number(searchParams.get('pageSize')) || 20));
+    const pageSize = Math.max(
+      1,
+      Math.min(100, Number(searchParams.get('pageSize')) || 20)
+    );
     const projectIdParam = searchParams.get('projectId');
     const usuarioIdParam = searchParams.get('usuarioId');
     const sortBy = searchParams.get('sortBy') || 'timestamp';
     const sortDirection = searchParams.get('sortDirection') || 'desc';
 
-    // Validar sortBy
-    const validSortFields = ['valor', 'timestamp', 'proyectoNombre', 'usuarioEmail'];
-    const sortField = validSortFields.includes(sortBy) ? sortBy : 'timestamp';
-    const sortDir = sortDirection === 'asc' ? 'asc' : 'desc';
+    const sortField: SortField = validSortFields.includes(
+      sortBy as SortField
+    )
+      ? (sortBy as SortField)
+      : 'timestamp';
 
-    // Construir filtros
-    const whereClause: {
-      proyectoActuador: {
-        actuadorId: number;
-        proyectoId?: number;
-        proyecto?: { is: { activo: boolean } };
-      };
-      usuarioId?: string | null;
-    } = {
-      proyectoActuador: {
-        actuadorId,
-        proyecto: { is: { activo: true } }, // Solo proyectos activos
-      },
+    const sortDir: Prisma.SortOrder =
+      sortDirection === 'asc' ? 'asc' : 'desc';
+
+    // Construir filtros de ProyectoActuador tipados
+    let proyectoActuadorWhere: Prisma.ProyectoActuadorWhereInput = {
+      actuadorId,
+      proyecto: { activo: true }, // Solo proyectos activos
     };
 
     // Filtro opcional por proyecto
     if (projectIdParam) {
       const projId = Number(projectIdParam);
       if (Number.isInteger(projId) && projId > 0) {
-        whereClause.proyectoActuador.proyectoId = projId;
+        proyectoActuadorWhere = {
+          ...proyectoActuadorWhere,
+          proyectoId: projId,
+        };
       }
     }
 
     // Filtro opcional por usuario
-    if (usuarioIdParam) {
+    let usuarioIdFilter: string | null | undefined = undefined;
+    if (usuarioIdParam !== null && usuarioIdParam !== undefined) {
       if (usuarioIdParam === 'null') {
-        whereClause.usuarioId = null; // Registros sin usuario asignado
+        usuarioIdFilter = null; // Registros sin usuario asignado
       } else {
-        whereClause.usuarioId = usuarioIdParam;
+        usuarioIdFilter = usuarioIdParam;
       }
     }
+
+    const whereClause: Prisma.RegistroActuadorWhereInput = {
+      proyectoActuador: proyectoActuadorWhere,
+      ...(usuarioIdFilter !== undefined ? { usuarioId: usuarioIdFilter } : {}),
+    };
 
     // Contar total de registros
     const totalCount = await prisma.registroActuador.count({
@@ -97,25 +125,26 @@ export async function GET(
     const skip = (page - 1) * pageSize;
 
     // Construir orderBy según el campo seleccionado
-    let orderByClause: any;
-    
+    let orderByClause: Prisma.RegistroActuadorOrderByWithRelationInput;
+
     if (sortField === 'valor') {
       orderByClause = { valor: sortDir };
     } else if (sortField === 'timestamp') {
       orderByClause = { timestamp: sortDir };
     } else if (sortField === 'proyectoNombre') {
-      orderByClause = { 
-        proyectoActuador: { 
-          proyecto: { 
-            nombre: sortDir 
-          } 
-        } 
+      orderByClause = {
+        proyectoActuador: {
+          proyecto: {
+            nombre: sortDir,
+          },
+        },
       };
-    } else if (sortField === 'usuarioEmail') {
-      orderByClause = { 
-        usuario: { 
-          email: sortDir 
-        } 
+    } else {
+      // 'usuarioEmail'
+      orderByClause = {
+        usuario: {
+          email: sortDir,
+        },
       };
     }
 
@@ -158,12 +187,14 @@ export async function GET(
       proyectoNombre: r.proyectoActuador.proyecto.nombre,
       proyectoId: r.proyectoActuador.proyecto.project_id,
       unidadSimbolo: actuador.unidadMedida?.simbolo ?? '',
-      usuario: r.usuario ? {
-        id: r.usuario.id,
-        email: r.usuario.email,
-        nombre: r.usuario.nombre,
-        apellido: r.usuario.apellido,
-      } : null,
+      usuario: r.usuario
+        ? {
+            id: r.usuario.id,
+            email: r.usuario.email,
+            nombre: r.usuario.nombre,
+            apellido: r.usuario.apellido,
+          }
+        : null,
     }));
 
     return NextResponse.json({
@@ -178,17 +209,17 @@ export async function GET(
     });
   } catch (error) {
     console.error('Error al obtener registros:', error);
-    
+
     if (process.env.NODE_ENV === 'development') {
       return NextResponse.json(
-        { 
+        {
           error: 'Error al obtener los registros',
-          details: error instanceof Error ? error.message : String(error)
+          details: error instanceof Error ? error.message : String(error),
         },
         { status: 500 }
       );
     }
-    
+
     return NextResponse.json(
       { error: 'Error al obtener los registros' },
       { status: 500 }
