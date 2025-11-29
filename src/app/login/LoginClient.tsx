@@ -123,6 +123,15 @@ export default function LoginClient() {
             </button>
           </p>
         </div>
+        <div className="text-center">
+          <button
+            type="button"
+            onClick={() => router.push('/forgot-password')}
+            className="text-sm text-blue-600 hover:underline"
+          >
+            ¿Olvidaste tu contraseña?
+          </button>
+        </div>
       </div>
     </div>
   );

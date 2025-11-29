@@ -203,3 +203,16 @@ model RegistroActuador {
   @@index([timestamp])
   @@index([usuarioId])
 }
+
+model PasswordReset {
+  id        String   @id @default(uuid())
+  email     String
+  code      String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([code])
+  @@index([expiresAt])
+}

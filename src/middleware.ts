@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const BASE = (process.env.NEXT_PUBLIC_BASE_PATH || process.env.BASE_PATH || '').replace(/\/$/, '');
 
-const PUBLIC_EXACT = new Set<string>(['/login', '/register']);
+const PUBLIC_EXACT = new Set<string>(['/login', '/register', '/forgot-password']);
 const PUBLIC_PREFIX = ['/api/public']; // /api/public/** es público
 
 function stripBase(pathname: string): string {
