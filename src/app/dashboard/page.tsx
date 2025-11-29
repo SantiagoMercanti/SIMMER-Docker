@@ -119,6 +119,36 @@ export default function DashboardPage() {
       loadActuadores(true);
     }
   }, [role, loadProjects, loadSensores, loadActuadores]); // â† Ahora incluye las dependencias
+            
+  {/* ELIMINAR INICIO */}
+  const [mailSending, setMailSending] = useState(false);
+  const [mailMessage, setMailMessage] = useState<string | null>(null);
+
+  const handleSendTestMail = async () => {
+    setMailMessage(null);
+    setMailSending(true);
+
+    try {
+      const res = await fetch(api('/api/mail/test'), {
+        method: 'POST',
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        console.error('Error al enviar mail de prueba:', body);
+        setMailMessage('No se pudo enviar el mail de prueba.');
+        return;
+      }
+
+      setMailMessage('Mail de prueba enviado a santiagoamercanti@gmail.com ✅');
+    } catch (error) {
+      console.error('Error de red al enviar mail de prueba:', error);
+      setMailMessage('Ocurrió un error al enviar el mail de prueba.');
+    } finally {
+      setMailSending(false);
+    }
+  };
+      {/* ELIMINAR FIN */}
 
   // ----------------- Crear / Editar Sensor -----------------
   const openNewSensor = () => {
@@ -412,6 +442,25 @@ export default function DashboardPage() {
           <header className="mb-6">
             <h1 className="text-3xl font-bold text-blue-600 tracking-wide">Dashboard</h1>
             <p className="text-gray-600">Administra proyectos, sensores y actuadores.</p>
+            {/* ELIMINAR INICIO */}
+            {/* 🔔 Botón para enviar mail de prueba */}
+            <div className="mt-4 flex items-center gap-4">
+              <button
+                type="button"
+                onClick={handleSendTestMail}
+                disabled={mailSending}
+                className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {mailSending ? 'Enviando correo de prueba...' : 'Enviar correo de prueba'}
+              </button>
+
+              {mailMessage && (
+                <span className="text-sm text-gray-700">
+                  {mailMessage}
+                </span>
+              )}
+            </div>
+         {/* ELIMINAR FIN */}
           </header>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
