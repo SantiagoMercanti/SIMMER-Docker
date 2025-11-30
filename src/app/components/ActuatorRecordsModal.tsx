@@ -60,19 +60,24 @@ export default function ActuatorRecordsModal({
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<RecordsResponse | null>(null);
+
+  // Filtro por proyecto
   const [projects, setProjects] = useState<Project[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+
+  // Filtro por usuario
+  const [users, setUsers] = useState<User[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+
   const [currentPage, setCurrentPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('timestamp');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  
+
   const pageSize = 20;
   const maxRecords = 200;
 
-  // Obtener lista de proyectos cuando se abre el modal
+  // --- Cargar proyectos del actuador (para el filtro de proyecto) ---
   useEffect(() => {
     if (!open || !actuadorId) {
       setProjects([]);
@@ -84,9 +89,9 @@ export default function ActuatorRecordsModal({
 
     (async () => {
       try {
-        const url = api(`/api/actuators/${actuadorId}/projects`);
+        const url = api(`/api/actuators/${actuadorId}/usage`);
         const res = await fetch(url, { cache: 'no-store' });
-        
+
         if (res.ok) {
           const json = await res.json();
           if (!abort && json.projects) {
@@ -103,7 +108,7 @@ export default function ActuatorRecordsModal({
     };
   }, [open, actuadorId]);
 
-  // Obtener lista de usuarios cuando se abre el modal
+  // --- Cargar usuarios del actuador (para filtro por usuario) ---
   useEffect(() => {
     if (!open || !actuadorId) {
       setUsers([]);
@@ -117,7 +122,7 @@ export default function ActuatorRecordsModal({
       try {
         const url = api(`/api/actuators/${actuadorId}/users`);
         const res = await fetch(url, { cache: 'no-store' });
-        
+
         if (res.ok) {
           const json = await res.json();
           if (!abort && json.users) {
@@ -134,7 +139,7 @@ export default function ActuatorRecordsModal({
     };
   }, [open, actuadorId]);
 
-  // Obtener registros
+  // --- Cargar registros del actuador (con filtros y orden) ---
   useEffect(() => {
     if (!open || !actuadorId) {
       setData(null);
@@ -149,32 +154,38 @@ export default function ActuatorRecordsModal({
       try {
         setLoading(true);
         setError(null);
-        
+
         const params = new URLSearchParams({
           page: String(currentPage),
           pageSize: String(pageSize),
           sortBy: sortField,
           sortDirection: sortDirection,
         });
-        
+
+        // Filtro por proyecto
         if (selectedProjectId) {
           params.append('projectId', String(selectedProjectId));
         }
 
+        // Filtro por usuario
         if (selectedUserId) {
           params.append('usuarioId', selectedUserId);
         }
 
         const url = api(`/api/actuators/${actuadorId}/records?${params}`);
         const res = await fetch(url, { cache: 'no-store' });
-        
+
         if (!res.ok) {
-          const errorData = await res.json().catch(() => ({ error: 'Error desconocido' }));
-          throw new Error(errorData.error || 'No se pudieron obtener los registros');
+          const errorData = await res
+            .json()
+            .catch(() => ({ error: 'Error desconocido' }));
+          throw new Error(
+            errorData.error || 'No se pudieron obtener los registros'
+          );
         }
-        
+
         const json = (await res.json()) as RecordsResponse;
-        
+
         if (!abort) {
           setData(json);
         }
@@ -182,7 +193,9 @@ export default function ActuatorRecordsModal({
         console.error(e);
         if (!abort) {
           setData(null);
-          setError(e instanceof Error ? e.message : 'Error al cargar registros');
+          setError(
+            e instanceof Error ? e.message : 'Error al cargar registros'
+          );
         }
       } finally {
         if (!abort) {
@@ -194,7 +207,15 @@ export default function ActuatorRecordsModal({
     return () => {
       abort = true;
     };
-  }, [open, actuadorId, selectedProjectId, selectedUserId, currentPage, sortField, sortDirection]);
+  }, [
+    open,
+    actuadorId,
+    selectedProjectId,
+    selectedUserId,
+    currentPage,
+    sortField,
+    sortDirection,
+  ]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -218,7 +239,7 @@ export default function ActuatorRecordsModal({
 
   const handleDownloadCSV = async () => {
     if (!actuadorId) return;
-    
+
     try {
       const params = new URLSearchParams({
         page: '1',
@@ -226,7 +247,7 @@ export default function ActuatorRecordsModal({
         sortBy: sortField,
         sortDirection: sortDirection,
       });
-      
+
       if (selectedProjectId) {
         params.append('projectId', String(selectedProjectId));
       }
@@ -237,13 +258,13 @@ export default function ActuatorRecordsModal({
 
       const url = api(`/api/actuators/${actuadorId}/records?${params}`);
       const res = await fetch(url, { cache: 'no-store' });
-      
+
       if (!res.ok) {
         throw new Error('Error al descargar registros');
       }
-      
+
       const json = (await res.json()) as RecordsResponse;
-      
+
       const headers = ['#', 'Valor', 'Unidad', 'Proyecto', 'Usuario', 'Fecha y Hora'];
       const rows = json.records.map((r, idx) => [
         String(idx + 1),
@@ -251,22 +272,29 @@ export default function ActuatorRecordsModal({
         r.unidadSimbolo,
         r.proyectoNombre,
         r.usuario ? r.usuario.email : 'Sin usuario',
-        formatDateFull(r.timestamp)
+        formatDateFull(r.timestamp),
       ]);
-      
+
       const csvContent = [
         headers.join(','),
-        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+        ...rows.map((row) => row.map((cell) => `"${cell}"`).join(',')),
       ].join('\n');
-      
-      const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+
+      const blob = new Blob(['\ufeff' + csvContent], {
+        type: 'text/csv;charset=utf-8;',
+      });
       const link = document.createElement('a');
       const downloadUrl = URL.createObjectURL(blob);
-      
+
       link.setAttribute('href', downloadUrl);
-      link.setAttribute('download', `registros_${json.actuadorNombre}_${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute(
+        'download',
+        `registros_${json.actuadorNombre}_${new Date()
+          .toISOString()
+          .split('T')[0]}.csv`
+      );
       link.style.visibility = 'hidden';
-      
+
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -280,26 +308,26 @@ export default function ActuatorRecordsModal({
   const formatDateFull = (timestamp: string) => {
     const date = new Date(timestamp);
     if (isNaN(date.getTime())) return '—';
-    
+
     return date.toLocaleString('es-AR', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit'
+      second: '2-digit',
     });
   };
 
   const formatShortDate = (timestamp: string) => {
     const date = new Date(timestamp);
     if (isNaN(date.getTime())) return '—';
-    
+
     return date.toLocaleString('es-AR', {
       day: '2-digit',
       month: '2-digit',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   };
 
@@ -310,7 +338,11 @@ export default function ActuatorRecordsModal({
   };
 
   const handleNextPage = () => {
-    if (data && currentPage < data.pagination.totalPages && currentPage * pageSize < maxRecords) {
+    if (
+      data &&
+      currentPage < data.pagination.totalPages &&
+      currentPage * pageSize < maxRecords
+    ) {
       setCurrentPage(currentPage + 1);
     }
   };
@@ -320,7 +352,11 @@ export default function ActuatorRecordsModal({
     Math.ceil(maxRecords / pageSize)
   );
 
-  const showingUpTo = Math.min(currentPage * pageSize, maxRecords, data?.pagination.totalCount || 0);
+  const showingUpTo = Math.min(
+    currentPage * pageSize,
+    maxRecords,
+    data?.pagination.totalCount || 0
+  );
   const hasMoreThanMax = (data?.pagination.totalCount || 0) > maxRecords;
 
   if (!open) return null;
@@ -328,19 +364,49 @@ export default function ActuatorRecordsModal({
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) {
       return (
-        <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+        <svg
+          className="w-4 h-4 text-gray-400"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"
+          />
         </svg>
       );
     }
-    
+
     return sortDirection === 'asc' ? (
-      <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+      <svg
+        className="w-4 h-4 text-blue-600"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M5 15l7-7 7 7"
+        />
       </svg>
     ) : (
-      <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+      <svg
+        className="w-4 h-4 text-blue-600"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M19 9l-7 7-7-7"
+        />
       </svg>
     );
   };
@@ -357,7 +423,8 @@ export default function ActuatorRecordsModal({
               </h3>
               {data && (
                 <p className="text-sm text-gray-600 mt-0.5">
-                  Actuador: <span className="font-medium">{data.actuadorNombre}</span>
+                  Actuador:{' '}
+                  <span className="font-medium">{data.actuadorNombre}</span>
                 </p>
               )}
             </div>
@@ -368,8 +435,18 @@ export default function ActuatorRecordsModal({
                   className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
                   title="Descargar registro completo"
                 >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
                   </svg>
                   Descargar CSV
                 </button>
@@ -390,7 +467,9 @@ export default function ActuatorRecordsModal({
           {loading && (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              <p className="ml-3 text-sm text-gray-600">Cargando registros...</p>
+              <p className="ml-3 text-sm text-gray-600">
+                Cargando registros...
+              </p>
             </div>
           )}
 
@@ -417,7 +496,7 @@ export default function ActuatorRecordsModal({
               </svg>
               <p className="mt-2 text-gray-600">
                 {selectedProjectId || selectedUserId
-                  ? 'No hay registros para los filtros seleccionados.' 
+                  ? 'No hay registros para los filtros seleccionados.'
                   : 'No hay registros disponibles.'}
               </p>
             </div>
@@ -428,16 +507,36 @@ export default function ActuatorRecordsModal({
               {hasMoreThanMax && (
                 <div className="mx-6 mt-4 rounded-md bg-amber-50 border border-amber-200 p-3">
                   <div className="flex items-start gap-2">
-                    <svg className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <svg
+                      className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
                     </svg>
                     <p className="text-sm text-amber-800">
-                      <span className="font-medium">Mostrando los {maxRecords} registros más {sortDirection === 'desc' && sortField === 'timestamp' ? 'recientes' : 'relevantes'}.</span> Este actuador tiene {data.pagination.totalCount} registros en total. Use el botón Descargar CSV para obtener el registro completo.
+                      <span className="font-medium">
+                        Mostrando los {maxRecords} registros más{' '}
+                        {sortDirection === 'desc' &&
+                          sortField === 'timestamp'
+                          ? 'recientes'
+                          : 'relevantes'}
+                        .
+                      </span>{' '}
+                      Este actuador tiene {data.pagination.totalCount} registros
+                      en total. Use el botón Descargar CSV para obtener el
+                      registro completo.
                     </p>
                   </div>
                 </div>
               )}
-              
+
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50 border-y border-gray-200 sticky top-0">
@@ -445,7 +544,7 @@ export default function ActuatorRecordsModal({
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider w-16">
                         #
                       </th>
-                      <th 
+                      <th
                         className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
                         onClick={() => handleSort('valor')}
                       >
@@ -457,13 +556,17 @@ export default function ActuatorRecordsModal({
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                         Unidad
                       </th>
+
+                      {/* Columna Proyecto con filtro, igual que en SensorMeasurementsModal */}
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                         <div className="flex flex-col gap-1">
                           <span>Proyecto</span>
                           {projects.length > 0 && (
                             <select
                               value={selectedProjectId || 'all'}
-                              onChange={(e) => handleProjectChange(e.target.value)}
+                              onChange={(e) =>
+                                handleProjectChange(e.target.value)
+                              }
                               onClick={(e) => e.stopPropagation()}
                               className="text-xs font-normal normal-case rounded border-gray-300 focus:border-blue-500 focus:ring-blue-500 py-1 px-2 border bg-white"
                             >
@@ -477,13 +580,17 @@ export default function ActuatorRecordsModal({
                           )}
                         </div>
                       </th>
+
+                      {/* Columna Usuario con filtro */}
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
                         <div className="flex flex-col gap-1">
                           <span>Usuario</span>
                           {users.length > 0 && (
                             <select
                               value={selectedUserId || 'all'}
-                              onChange={(e) => handleUserChange(e.target.value)}
+                              onChange={(e) =>
+                                handleUserChange(e.target.value)
+                              }
                               onClick={(e) => e.stopPropagation()}
                               className="text-xs font-normal normal-case rounded border-gray-300 focus:border-blue-500 focus:ring-blue-500 py-1 px-2 border bg-white"
                             >
@@ -497,7 +604,8 @@ export default function ActuatorRecordsModal({
                           )}
                         </div>
                       </th>
-                      <th 
+
+                      <th
                         className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
                         onClick={() => handleSort('timestamp')}
                       >
@@ -510,7 +618,10 @@ export default function ActuatorRecordsModal({
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {data.records.map((r, index) => (
-                      <tr key={r.id} className="hover:bg-gray-50 transition-colors">
+                      <tr
+                        key={r.id}
+                        className="hover:bg-gray-50 transition-colors"
+                      >
                         <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-500">
                           {(currentPage - 1) * pageSize + index + 1}
                         </td>
@@ -532,11 +643,15 @@ export default function ActuatorRecordsModal({
                         </td>
                         <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-600">
                           {r.usuario ? (
-                            <span title={`${r.usuario.nombre} ${r.usuario.apellido}`}>
+                            <span
+                              title={`${r.usuario.nombre} ${r.usuario.apellido}`}
+                            >
                               {r.usuario.email}
                             </span>
                           ) : (
-                            <span className="text-gray-400 italic">Sin usuario</span>
+                            <span className="text-gray-400 italic">
+                              Sin usuario
+                            </span>
                           )}
                         </td>
                         <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-600 tabular-nums">
@@ -555,9 +670,20 @@ export default function ActuatorRecordsModal({
         {!loading && !error && data && data.pagination.totalPages > 0 && (
           <div className="flex items-center justify-between border-t px-6 py-4 flex-shrink-0 bg-gray-50">
             <p className="text-sm text-gray-600">
-              Mostrando <span className="font-medium">{Math.min((currentPage - 1) * pageSize + 1, data.pagination.totalCount)}</span> a{' '}
-              <span className="font-medium">{showingUpTo}</span> de{' '}
-              <span className="font-medium">{hasMoreThanMax ? `${maxRecords}+` : data.pagination.totalCount}</span> registros
+              Mostrando{' '}
+              <span className="font-medium">
+                {Math.min(
+                  (currentPage - 1) * pageSize + 1,
+                  data.pagination.totalCount
+                )}
+              </span>{' '}
+              a <span className="font-medium">{showingUpTo}</span> de{' '}
+              <span className="font-medium">
+                {hasMoreThanMax
+                  ? `${maxRecords}+`
+                  : data.pagination.totalCount}
+              </span>{' '}
+              registros
             </p>
             <div className="flex items-center gap-2">
               <button
@@ -566,13 +692,24 @@ export default function ActuatorRecordsModal({
                 disabled={currentPage === 1}
                 className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 19l-7-7 7-7"
+                  />
                 </svg>
                 Anterior
               </button>
               <span className="text-sm text-gray-600">
-                Página <span className="font-medium">{currentPage}</span> de <span className="font-medium">{maxPages}</span>
+                Página <span className="font-medium">{currentPage}</span> de{' '}
+                <span className="font-medium">{maxPages}</span>
               </span>
               <button
                 type="button"
@@ -581,8 +718,18 @@ export default function ActuatorRecordsModal({
                 className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 Siguiente
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
                 </svg>
               </button>
             </div>
