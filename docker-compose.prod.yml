@@ -16,6 +16,18 @@ services:
       timeout: 5s
       retries: 30
 
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: simmer_mosquitto
+    restart: always
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_logs:/mosquitto/log
+
   app:
     build:
       context: .
@@ -32,12 +44,15 @@ services:
     environment:
       NODE_ENV: "production"
       # Asegurate que .env.production contenga BASE_PATH=/a03 y NEXT_PUBLIC_BASE_PATH=/a03 si tu app los usa en runtime.
+      MQTT_BROKER_URL: "mqtt://mosquitto:1883"
     expose:
       - "3000"           # <- solo visible para la red interna del compose
     depends_on:
       db:
         condition: service_healthy
     # ❗️Sin 'command': se usa el CMD del Dockerfile (migrate deploy + node server.js)
+      mosquitto:
+        condition: service_started
 
   nginx:
     image: nginx:stable
@@ -68,3 +83,5 @@ services:
 
 volumes:
   db_data:
+  mosquitto_data:
+  mosquitto_logs:

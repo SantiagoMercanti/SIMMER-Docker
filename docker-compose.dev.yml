@@ -20,6 +20,18 @@ services:
       timeout: 5s
       retries: 30
 
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: simmer_mosquitto_dev
+    restart: always
+    ports:
+      - "1883:1883"  # Puerto MQTT
+      - "9001:9001"  # Puerto WebSocket (opcional, por si lo necesitas después)
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto_data_dev:/mosquitto/data
+      - mosquitto_logs_dev:/mosquitto/log
+
   app:
     build:
       context: .
@@ -34,6 +46,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      mosquitto:
+        condition: service_started
     volumes:
       - .:/app                    # hot reload
       - /app/node_modules         # evita que el node_modules del host tape al del contenedor
@@ -42,6 +56,9 @@ services:
     environment:
       CHOKIDAR_USEPOLLING: "true" # ayuda en Windows/OneDrive
       WATCHPACK_POLLING: "true"
+      MQTT_BROKER_URL: "mqtt://mosquitto:1883"  # URL interna del broker
 
 volumes:
   db_data_dev:
+  mosquitto_data_dev:
+  mosquitto_logs_dev:
