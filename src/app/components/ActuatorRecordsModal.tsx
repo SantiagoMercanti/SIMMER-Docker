@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 type Record = {
   id: number;
@@ -52,6 +52,9 @@ type SortDirection = 'asc' | 'desc';
 const BASE = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
 const api = (p: string) => `${BASE}${p}`;
 
+// Intervalo de auto-refresh: 30 segundos
+const AUTO_REFRESH_INTERVAL = 30 * 1000; // 30,000 ms
+
 export default function ActuatorRecordsModal({
   open,
   actuadorId,
@@ -73,6 +76,9 @@ export default function ActuatorRecordsModal({
   const [error, setError] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('timestamp');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
+  // Bandera para evitar múltiples fetches simultáneos
+  const isRefreshingRef = useRef(false);
 
   const pageSize = 20;
   const maxRecords = 200;
@@ -139,7 +145,79 @@ export default function ActuatorRecordsModal({
     };
   }, [open, actuadorId]);
 
-  // --- Cargar registros del actuador (con filtros y orden) ---
+  // Función para cargar registros del actuador (extraída para reutilizar)
+  const loadRecords = useCallback(async () => {
+    if (!actuadorId) return;
+
+    // Evitar múltiples fetches simultáneos
+    if (isRefreshingRef.current) {
+      console.log('[Records] Ya hay un fetch en curso, omitiendo...');
+      return;
+    }
+
+    let abort = false;
+    isRefreshingRef.current = true;
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const params = new URLSearchParams({
+        page: String(currentPage),
+        pageSize: String(pageSize),
+        sortBy: sortField,
+        sortDirection: sortDirection,
+      });
+
+      // Filtro por proyecto
+      if (selectedProjectId) {
+        params.append('projectId', String(selectedProjectId));
+      }
+
+      // Filtro por usuario
+      if (selectedUserId) {
+        params.append('usuarioId', selectedUserId);
+      }
+
+      const url = api(`/api/actuators/${actuadorId}/records?${params}`);
+      const res = await fetch(url, { cache: 'no-store' });
+
+      if (!res.ok) {
+        const errorData = await res
+          .json()
+          .catch(() => ({ error: 'Error desconocido' }));
+        throw new Error(
+          errorData.error || 'No se pudieron obtener los registros'
+        );
+      }
+
+      const json = (await res.json()) as RecordsResponse;
+
+      if (!abort) {
+        setData(json);
+      }
+    } catch (e) {
+      console.error(e);
+      if (!abort) {
+        setData(null);
+        setError(
+          e instanceof Error ? e.message : 'Error al cargar registros'
+        );
+      }
+    } finally {
+      if (!abort) {
+        setLoading(false);
+        isRefreshingRef.current = false;
+      }
+    }
+
+    return () => {
+      abort = true;
+      isRefreshingRef.current = false;
+    };
+  }, [actuadorId, selectedProjectId, selectedUserId, currentPage, sortField, sortDirection]);
+
+  // --- Effect para cargar registros cuando cambian los parámetros ---
   useEffect(() => {
     if (!open || !actuadorId) {
       setData(null);
@@ -148,74 +226,27 @@ export default function ActuatorRecordsModal({
       return;
     }
 
-    let abort = false;
+    loadRecords();
+  }, [open, actuadorId, selectedProjectId, selectedUserId, currentPage, sortField, sortDirection, loadRecords]);
 
-    (async () => {
-      try {
-        setLoading(true);
-        setError(null);
+  // Effect separado para auto-refresh cada 30 segundos
+  useEffect(() => {
+    if (!open || !actuadorId) {
+      return;
+    }
 
-        const params = new URLSearchParams({
-          page: String(currentPage),
-          pageSize: String(pageSize),
-          sortBy: sortField,
-          sortDirection: sortDirection,
-        });
+    console.log(`[Records] Auto-refresh activado (cada ${AUTO_REFRESH_INTERVAL / 1000}s)`);
 
-        // Filtro por proyecto
-        if (selectedProjectId) {
-          params.append('projectId', String(selectedProjectId));
-        }
-
-        // Filtro por usuario
-        if (selectedUserId) {
-          params.append('usuarioId', selectedUserId);
-        }
-
-        const url = api(`/api/actuators/${actuadorId}/records?${params}`);
-        const res = await fetch(url, { cache: 'no-store' });
-
-        if (!res.ok) {
-          const errorData = await res
-            .json()
-            .catch(() => ({ error: 'Error desconocido' }));
-          throw new Error(
-            errorData.error || 'No se pudieron obtener los registros'
-          );
-        }
-
-        const json = (await res.json()) as RecordsResponse;
-
-        if (!abort) {
-          setData(json);
-        }
-      } catch (e) {
-        console.error(e);
-        if (!abort) {
-          setData(null);
-          setError(
-            e instanceof Error ? e.message : 'Error al cargar registros'
-          );
-        }
-      } finally {
-        if (!abort) {
-          setLoading(false);
-        }
-      }
-    })();
+    const interval = setInterval(() => {
+      console.log('[Records] Ejecutando auto-refresh...');
+      loadRecords();
+    }, AUTO_REFRESH_INTERVAL);
 
     return () => {
-      abort = true;
+      console.log('[Records] Auto-refresh desactivado');
+      clearInterval(interval);
     };
-  }, [
-    open,
-    actuadorId,
-    selectedProjectId,
-    selectedUserId,
-    currentPage,
-    sortField,
-    sortDirection,
-  ]);
+  }, [open, actuadorId, loadRecords]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -429,6 +460,24 @@ export default function ActuatorRecordsModal({
               )}
             </div>
             <div className="flex items-center gap-3">
+              {/* Botón de refresh manual */}
+              <button
+                onClick={loadRecords}
+                disabled={loading}
+                className="inline-flex items-center gap-2 rounded-md bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Actualizar ahora"
+              >
+                <svg 
+                  className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} 
+                  fill="none" 
+                  viewBox="0 0 24 24" 
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {loading ? 'Actualizando...' : 'Actualizar'}
+              </button>
+
               {data && data.records.length > 0 && (
                 <button
                   onClick={handleDownloadCSV}
@@ -464,7 +513,7 @@ export default function ActuatorRecordsModal({
 
         {/* Content */}
         <div className="overflow-y-auto flex-1">
-          {loading && (
+          {loading && !data && (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               <p className="ml-3 text-sm text-gray-600">
@@ -502,7 +551,7 @@ export default function ActuatorRecordsModal({
             </div>
           )}
 
-          {!loading && !error && data && data.records.length > 0 && (
+          {data && data.records.length > 0 && (
             <>
               {hasMoreThanMax && (
                 <div className="mx-6 mt-4 rounded-md bg-amber-50 border border-amber-200 p-3">
