@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 type Measurement = {
   id: number;
@@ -41,6 +41,9 @@ type SortDirection = 'asc' | 'desc';
 const BASE = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
 const api = (p: string) => `${BASE}${p}`;
 
+// Intervalo de auto-refresh: 15 segundos
+const AUTO_REFRESH_INTERVAL = 15 * 1000; // 15,000 ms
+
 export default function SensorMeasurementsModal({
   open,
   sensorId,
@@ -55,6 +58,10 @@ export default function SensorMeasurementsModal({
   const [error, setError] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('timestamp');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  // const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  
+  // Bandera para evitar múltiples fetches simultáneos
+  const isRefreshingRef = useRef(false);
   
   const pageSize = 20;
   const maxMeasurements = 200;
@@ -90,63 +97,98 @@ export default function SensorMeasurementsModal({
     };
   }, [open, sensorId]);
 
-  // Obtener mediciones
+  // Función para cargar mediciones (extraída para reutilizar)
+  const loadMeasurements = useCallback(async () => {
+    if (!sensorId) return;
+    
+    // Evitar múltiples fetches simultáneos
+    if (isRefreshingRef.current) {
+      console.log('[Measurements] Ya hay un fetch en curso, omitiendo...');
+      return;
+    }
+
+    let abort = false;
+    isRefreshingRef.current = true;
+
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const params = new URLSearchParams({
+        page: String(currentPage),
+        pageSize: String(pageSize),
+        sortBy: sortField,
+        sortDirection: sortDirection,
+      });
+      
+      if (selectedProjectId) {
+        params.append('projectId', String(selectedProjectId));
+      }
+
+      const url = api(`/api/sensors/${sensorId}/measurements?${params}`);
+      const res = await fetch(url, { cache: 'no-store' });
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Error desconocido' }));
+        throw new Error(errorData.error || 'No se pudieron obtener las mediciones');
+      }
+      
+      const json = (await res.json()) as MeasurementsResponse;
+      
+      if (!abort) {
+        setData(json);
+        // setLastRefresh(new Date());
+      }
+    } catch (e) {
+      console.error(e);
+      if (!abort) {
+        setData(null);
+        setError(e instanceof Error ? e.message : 'Error al cargar mediciones');
+      }
+    } finally {
+      if (!abort) {
+        setLoading(false);
+        isRefreshingRef.current = false;
+      }
+    }
+
+    return () => {
+      abort = true;
+      isRefreshingRef.current = false;
+    };
+  }, [sensorId, selectedProjectId, currentPage, sortField, sortDirection, pageSize]);
+
+  // Effect para cargar mediciones cuando cambian los parámetros
   useEffect(() => {
     if (!open || !sensorId) {
       setData(null);
       setCurrentPage(1);
       setError(null);
+      // setLastRefresh(null);
       return;
     }
 
-    let abort = false;
+    loadMeasurements();
+  }, [open, sensorId, selectedProjectId, currentPage, sortField, sortDirection, loadMeasurements]);
 
-    (async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        const params = new URLSearchParams({
-          page: String(currentPage),
-          pageSize: String(pageSize),
-          sortBy: sortField,
-          sortDirection: sortDirection,
-        });
-        
-        if (selectedProjectId) {
-          params.append('projectId', String(selectedProjectId));
-        }
+  // Effect separado para auto-refresh cada 30 segundos
+  useEffect(() => {
+    if (!open || !sensorId) {
+      return;
+    }
 
-        const url = api(`/api/sensors/${sensorId}/measurements?${params}`);
-        const res = await fetch(url, { cache: 'no-store' });
-        
-        if (!res.ok) {
-          const errorData = await res.json().catch(() => ({ error: 'Error desconocido' }));
-          throw new Error(errorData.error || 'No se pudieron obtener las mediciones');
-        }
-        
-        const json = (await res.json()) as MeasurementsResponse;
-        
-        if (!abort) {
-          setData(json);
-        }
-      } catch (e) {
-        console.error(e);
-        if (!abort) {
-          setData(null);
-          setError(e instanceof Error ? e.message : 'Error al cargar mediciones');
-        }
-      } finally {
-        if (!abort) {
-          setLoading(false);
-        }
-      }
-    })();
+    console.log(`[Measurements] Auto-refresh activado (cada ${AUTO_REFRESH_INTERVAL / 1000}s)`);
+
+    const interval = setInterval(() => {
+      console.log('[Measurements] Ejecutando auto-refresh...');
+      loadMeasurements();
+    }, AUTO_REFRESH_INTERVAL);
 
     return () => {
-      abort = true;
+      console.log('[Measurements] Auto-refresh desactivado');
+      clearInterval(interval);
     };
-  }, [open, sensorId, selectedProjectId, currentPage, sortField, sortDirection]);
+  }, [open, sensorId, loadMeasurements]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -155,12 +197,12 @@ export default function SensorMeasurementsModal({
       setSortField(field);
       setSortDirection(field === 'timestamp' ? 'desc' : 'asc');
     }
-    setCurrentPage(1); // Resetear a página 1 al cambiar orden
+    setCurrentPage(1);
   };
 
   const handleProjectChange = (projectId: string) => {
     setSelectedProjectId(projectId === 'all' ? null : Number(projectId));
-    setCurrentPage(1); // Resetear a página 1 al cambiar filtro
+    setCurrentPage(1);
   };
 
   const handleDownloadCSV = async () => {
@@ -246,6 +288,20 @@ export default function SensorMeasurementsModal({
     });
   };
 
+  // const formatTimeAgo = (date: Date | null) => {
+  //   if (!date) return '';
+    
+  //   const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
+    
+  //   if (seconds < 60) return 'hace menos de 1 min';
+    
+  //   const minutes = Math.floor(seconds / 60);
+  //   if (minutes < 60) return `hace ${minutes} min`;
+    
+  //   const hours = Math.floor(minutes / 60);
+  //   return `hace ${hours}h ${minutes % 60}min`;
+  // };
+
   const handlePrevPage = () => {
     if (currentPage > 1) {
       setCurrentPage(currentPage - 1);
@@ -305,6 +361,24 @@ export default function SensorMeasurementsModal({
               )}
             </div>
             <div className="flex items-center gap-3">
+              {/* Botón de refresh manual */}
+              <button
+                onClick={loadMeasurements}
+                disabled={loading}
+                className="inline-flex items-center gap-2 rounded-md bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Actualizar ahora"
+              >
+                <svg 
+                  className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} 
+                  fill="none" 
+                  viewBox="0 0 24 24" 
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {loading ? 'Actualizando...' : 'Actualizar'}
+              </button>
+              
               {data && data.measurements.length > 0 && (
                 <button
                   onClick={handleDownloadCSV}
@@ -331,7 +405,7 @@ export default function SensorMeasurementsModal({
 
         {/* Content */}
         <div className="overflow-y-auto flex-1">
-          {loading && (
+          {loading && !data && (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               <p className="ml-3 text-sm text-gray-600">Cargando mediciones...</p>
@@ -367,7 +441,7 @@ export default function SensorMeasurementsModal({
             </div>
           )}
 
-          {!loading && !error && data && data.measurements.length > 0 && (
+          {data && data.measurements.length > 0 && (
             <>
               {hasMoreThanMax && (
                 <div className="mx-6 mt-4 rounded-md bg-amber-50 border border-amber-200 p-3">
