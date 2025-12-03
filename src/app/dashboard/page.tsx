@@ -120,35 +120,6 @@ export default function DashboardPage() {
     }
   }, [role, loadProjects, loadSensores, loadActuadores]); // â† Ahora incluye las dependencias
             
-  {/* ELIMINAR INICIO */}
-  const [mailSending, setMailSending] = useState(false);
-  const [mailMessage, setMailMessage] = useState<string | null>(null);
-
-  const handleSendTestMail = async () => {
-    setMailMessage(null);
-    setMailSending(true);
-
-    try {
-      const res = await fetch(api('/api/mail/test'), {
-        method: 'POST',
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        console.error('Error al enviar mail de prueba:', body);
-        setMailMessage('No se pudo enviar el mail de prueba.');
-        return;
-      }
-
-      setMailMessage('Mail de prueba enviado a santiagoamercanti@gmail.com ✅');
-    } catch (error) {
-      console.error('Error de red al enviar mail de prueba:', error);
-      setMailMessage('Ocurrió un error al enviar el mail de prueba.');
-    } finally {
-      setMailSending(false);
-    }
-  };
-      {/* ELIMINAR FIN */}
 
   // ----------------- Crear / Editar Sensor -----------------
   const openNewSensor = () => {
@@ -221,10 +192,10 @@ export default function DashboardPage() {
 
       if (projects?.length) {
         const nombres = projects.map(p => p.nombre).join(' - ');
-        const msg = `El elemento a eliminar estÃ¡ siendo utilizado en los proyectos: ${nombres}. Â¿Desea continuar?`;
+        const msg = `El elemento a eliminar está siendo utilizado en los proyectos: ${nombres}. ¿Desea continuar?`;
         if (!confirm(msg)) return;
       } else {
-        if (!confirm('Â¿Eliminar este sensor?')) return;
+        if (!confirm('¿Eliminar este sensor?')) return;
       }
 
       // DELETE (soft-delete en backend)
@@ -293,10 +264,10 @@ export default function DashboardPage() {
 
       if (projects?.length) {
         const nombres = projects.map(p => p.nombre).join(' - ');
-        const msg = `El elemento a eliminar estÃ¡ siendo utilizado en los proyectos: ${nombres}. Â¿Desea continuar?`;
+        const msg = `El elemento a eliminar está siendo utilizado en los proyectos: ${nombres}. ¿Desea continuar?`;
         if (!confirm(msg)) return;
       } else {
-        if (!confirm('Â¿Eliminar este actuador?')) return;
+        if (!confirm('¿Eliminar este actuador?')) return;
       }
 
       // DELETE (soft-delete en backend)
@@ -353,7 +324,7 @@ export default function DashboardPage() {
   };
 
   const handleDeleteProyecto = async (id: string) => {
-    if (!confirm('Â¿Eliminar este proyecto? Esta acciÃ³n es permanente.')) return;
+    if (!confirm('¿Eliminar este proyecto? Esta acción es permanente.')) return;
     const res = await fetch(api(`/api/projects/${id}`), { method: 'DELETE' });
     if (!res.ok && res.status !== 204) {
       const j = await res.json().catch(() => ({}));
@@ -366,7 +337,7 @@ export default function DashboardPage() {
   // Agregar estas funciones en page.tsx
 
   const handleReactivateSensor = async (id: string) => {
-    if (!confirm('Â¿Reactivar este sensor?')) return;
+    if (!confirm('¿Reactivar este sensor?')) return;
     const res = await fetch(api(`/api/sensors/${id}`), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -381,7 +352,7 @@ export default function DashboardPage() {
   };
 
   const handleReactivateActuator = async (id: string) => {
-    if (!confirm('Â¿Reactivar este actuador?')) return;
+    if (!confirm('¿Reactivar este actuador?')) return;
     const res = await fetch(api(`/api/actuators/${id}`), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -396,7 +367,7 @@ export default function DashboardPage() {
   };
 
   const handleReactivateProject = async (id: string) => {
-    if (!confirm('Â¿Reactivar este proyecto?')) return;
+    if (!confirm('¿Reactivar este proyecto?')) return;
     const res = await fetch(api(`/api/projects/${id}`), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -442,25 +413,6 @@ export default function DashboardPage() {
           <header className="mb-6">
             <h1 className="text-3xl font-bold text-blue-600 tracking-wide">Dashboard</h1>
             <p className="text-gray-600">Administra proyectos, sensores y actuadores.</p>
-            {/* ELIMINAR INICIO */}
-            {/* 🔔 Botón para enviar mail de prueba */}
-            <div className="mt-4 flex items-center gap-4">
-              <button
-                type="button"
-                onClick={handleSendTestMail}
-                disabled={mailSending}
-                className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {mailSending ? 'Enviando correo de prueba...' : 'Enviar correo de prueba'}
-              </button>
-
-              {mailMessage && (
-                <span className="text-sm text-gray-700">
-                  {mailMessage}
-                </span>
-              )}
-            </div>
-         {/* ELIMINAR FIN */}
           </header>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -565,7 +517,7 @@ export default function DashboardPage() {
             setSelectedProjectId(String(projectId));
             setOpenProjectDetails(true);
           }}
-          onGoLogs={(aid) => console.log('Ir a registro de envÃ­os del actuador', aid)}
+          onGoLogs={(aid) => console.log('Ir a registro de envíos del actuador', aid)}
         />
         <ProjectDetailsModal
           open={openProjectDetails}
