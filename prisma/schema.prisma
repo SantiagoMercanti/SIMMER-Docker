@@ -83,6 +83,7 @@ model Sensor {
 
   // Relación N:M con proyectos a través de ProyectoSensor
   proyectos ProyectoSensor[]
+  alertas SensorAlert[]
 
   // Ya no cuelgan mediciones directamente del sensor
 
@@ -215,4 +216,19 @@ model PasswordReset {
   @@index([email])
   @@index([code])
   @@index([expiresAt])
+}
+
+model SensorAlert {
+  id        Int      @id @default(autoincrement())
+  sensorId  Int
+  sensor    Sensor   @relation(fields: [sensorId], references: [sensor_id], onDelete: Cascade)
+  
+  valor     Float    // Valor que disparó la alerta
+  timestamp DateTime @default(now()) // Cuándo se disparó la alerta
+  
+  // Cooldown: última alerta enviada para este sensor
+  // Usado para evitar spam de emails
+  
+  @@index([sensorId])
+  @@index([timestamp])
 }

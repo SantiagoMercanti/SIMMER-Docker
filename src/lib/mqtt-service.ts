@@ -1,5 +1,6 @@
 import mqtt from 'mqtt';
 import { prisma } from './prisma';
+import { checkAndSendAlert } from './sensor-alert-service';
 
 let mqttClient: mqtt.MqttClient | null = null;
 let isInitialized = false;
@@ -133,6 +134,7 @@ async function subscribeToActiveSensors() {
  * 1. Busca todos los sensores activos con ese tópico
  * 2. Por cada sensor, busca sus ProyectoSensor activos
  * 3. Guarda una MedicionSensor por cada ProyectoSensor
+ * 4. Verifica si el sensor está fuera de rango y envía alertas si corresponde
  */
 async function handleSensorMessage(topic: string, message: SensorMessage) {
   const { valor, timestamp } = message;
@@ -165,15 +167,15 @@ async function handleSensorMessage(topic: string, message: SensorMessage) {
 
     console.log(`[MQTT] Encontrados ${sensores.length} sensor(es) para "${topic}"`);
 
+    const medicionTimestamp = timestamp ? new Date(timestamp) : new Date();
+
     // 2. Por cada sensor, buscar sus ProyectoSensor activos y guardar mediciones
     for (const sensor of sensores) {
-      // Validar rango (opcional, puedes comentar si no quieres esta validación)
+      // Advertencia si está fuera de rango (pero guardamos igual)
       if (valor < sensor.valor_min || valor > sensor.valor_max) {
         console.warn(
-          `[MQTT] Valor ${valor} fuera de rango [${sensor.valor_min}, ${sensor.valor_max}] para sensor "${sensor.nombre}"`
+          `[MQTT] ⚠️  Valor ${valor} fuera de rango [${sensor.valor_min}, ${sensor.valor_max}] para sensor "${sensor.nombre}"`
         );
-        // Puedes decidir si continuar o saltar esta medición
-        // Por ahora continuamos y guardamos igual
       }
 
       // Buscar ProyectoSensor activos
@@ -203,7 +205,7 @@ async function handleSensorMessage(topic: string, message: SensorMessage) {
       const mediciones = proyectosSensor.map(ps => ({
         proyectoSensorId: ps.id,
         valor,
-        timestamp: timestamp ? new Date(timestamp) : new Date(),
+        timestamp: medicionTimestamp,
       }));
 
       await prisma.medicionSensor.createMany({
@@ -213,6 +215,10 @@ async function handleSensorMessage(topic: string, message: SensorMessage) {
       console.log(
         `[MQTT] ✓ Guardadas ${mediciones.length} medición(es) para sensor "${sensor.nombre}" (valor: ${valor})`
       );
+
+      // 4. Verificar si debe enviar alerta por valor fuera de rango
+      // Esta función maneja internamente el cooldown y el envío de emails
+      await checkAndSendAlert(sensor.sensor_id, valor, medicionTimestamp);
     }
 
   } catch (error) {
