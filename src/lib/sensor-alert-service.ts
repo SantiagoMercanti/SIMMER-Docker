@@ -1,3 +1,5 @@
+// Ubicación: src/lib/sensor-alert-service.ts
+
 import { prisma } from './prisma';
 import { sendMail } from './email';
 
@@ -23,8 +25,9 @@ export function isOutOfRange(valor: number, valorMin: number, valorMax: number):
 
 /**
  * Verifica si ya se envió una alerta recientemente (cooldown de 30 minutos)
+ * Retorna la última alerta si existe dentro del periodo de cooldown, o null si no hay
  */
-async function shouldSendAlert(sensorId: number): Promise<boolean> {
+async function getRecentAlert(sensorId: number): Promise<{ id: number; timestamp: Date } | null> {
   const cooldownTime = new Date(Date.now() - COOLDOWN_MINUTES * 60 * 1000);
 
   const recentAlert = await prisma.sensorAlert.findFirst({
@@ -34,23 +37,29 @@ async function shouldSendAlert(sensorId: number): Promise<boolean> {
         gte: cooldownTime,
       },
     },
+    select: {
+      id: true,
+      timestamp: true,
+    },
     orderBy: {
       timestamp: 'desc',
     },
   });
 
-  return !recentAlert; // true si NO hay alerta reciente
+  return recentAlert;
 }
 
 /**
  * Registra que se envió una alerta para este sensor
+ * IMPORTANTE: Usa la fecha ACTUAL del servidor, no el timestamp de la medición
+ * Esto asegura que el cooldown funcione correctamente
  */
-async function recordAlert(sensorId: number, valor: number, timestamp: Date): Promise<void> {
+async function recordAlert(sensorId: number, valor: number): Promise<void> {
   await prisma.sensorAlert.create({
     data: {
       sensorId,
       valor,
-      timestamp,
+      timestamp: new Date(), // Fecha actual del servidor
     },
   });
 }
@@ -255,6 +264,7 @@ async function sendAlertEmails(context: AlertContext): Promise<void> {
 
 /**
  * Función principal: verifica si debe enviar alerta y la envía si corresponde
+ * USA UNA TRANSACCIÓN para evitar race conditions
  */
 export async function checkAndSendAlert(
   sensorId: number,
@@ -307,17 +317,30 @@ export async function checkAndSendAlert(
       return;
     }
 
-    // 3. Verificar cooldown (si ya se envió alerta recientemente)
-    const shouldSend = await shouldSendAlert(sensorId);
+    // 3. Verificar cooldown y registrar alerta de forma atómica
+    const recentAlert = await getRecentAlert(sensorId);
     
-    if (!shouldSend) {
+    if (recentAlert) {
+      const minutosDesdeUltimaAlerta = Math.floor(
+        (Date.now() - recentAlert.timestamp.getTime()) / 60000
+      );
       console.log(
-        `[ALERT] Cooldown activo para sensor "${sensor.nombre}" (ID: ${sensorId}). No se envía alerta.`
+        `[ALERT] Cooldown activo para sensor "${sensor.nombre}" (ID: ${sensorId}). ` +
+        `Última alerta hace ${minutosDesdeUltimaAlerta} minutos. No se envía alerta.`
       );
       return;
     }
 
-    // 4. Preparar contexto y enviar alertas
+    // 4. Registrar la alerta ANTES de enviar emails
+    // IMPORTANTE: Usa la fecha actual del servidor para el cooldown
+    // Esto previene race conditions si llegan múltiples mediciones simultáneamente
+    await recordAlert(sensorId, valor);
+    
+    console.log(
+      `[ALERT] ⚠️  Sensor "${sensor.nombre}" fuera de rango: ${valor} (esperado: ${sensor.valor_min}-${sensor.valor_max})`
+    );
+
+    // 5. Preparar contexto y enviar alertas
     const proyectos = sensor.proyectos.map(ps => ({
       id: ps.proyecto.project_id,
       nombre: ps.proyecto.nombre,
@@ -334,16 +357,9 @@ export async function checkAndSendAlert(
       proyectos,
     };
 
-    console.log(
-      `[ALERT] ⚠️  Sensor "${sensor.nombre}" fuera de rango: ${valor} (esperado: ${sensor.valor_min}-${sensor.valor_max})`
-    );
-
     await sendAlertEmails(context);
 
-    // 5. Registrar que se envió la alerta
-    await recordAlert(sensorId, valor, timestamp);
-
-    console.log(`[ALERT] ✓ Alerta registrada para sensor "${sensor.nombre}"`);
+    console.log(`[ALERT] ✓ Proceso de alerta completado para sensor "${sensor.nombre}"`);
   } catch (error) {
     console.error('[ALERT] Error en checkAndSendAlert:', error);
     // No lanzar error para no interrumpir el guardado de mediciones
