@@ -46,8 +46,8 @@ type ActuatorDetail = {
   id: number;
   nombre: string;
   descripcion?: string | null;
-  unidad: string;  // Guardaremos el símbolo para mostrar
-  unidadNombre?: string;  // Opcional: nombre completo
+  unidad: string;
+  unidadNombre?: string;
   valorMax: number | null;
   valorMin: number | null;
   estado: boolean;
@@ -66,7 +66,7 @@ type Props = {
   actuatorId: string | null;
   onClose: () => void;
   onGoProjects?: (actuatorId: number) => void;
-  onGoLogs?: (actuatorId: number) => void; // Mantener por compatibilidad pero ya no se usa
+  onGoLogs?: (actuatorId: number) => void;
   onOpenProject?: (projectId: number) => void;
 };
 
@@ -77,7 +77,6 @@ function isManagerOrAdmin(role: Role) {
   return role === 'labManager' || role === 'admin';
 }
 
-// Normalizador (acepta camelCase/snake_case)
 function normalizeActuator(data: ApiActuatorAnyCase): ActuatorDetail {
   const unidad = data.unidadMedida?.simbolo ?? '';
   const unidadNombre = data.unidadMedida?.nombre;
@@ -116,6 +115,8 @@ export default function ActuatorDetailsModal({
   // Input "Valor a enviar"
   const [sendValue, setSendValue] = useState<string>('');
   const [sendError, setSendError] = useState<string>('');
+  const [sendSuccess, setSendSuccess] = useState<string>('');
+  const [sending, setSending] = useState(false);
 
   // Estado para la lista de proyectos
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
@@ -158,6 +159,7 @@ export default function ActuatorDetailsModal({
       setLocalEstado(null);
       setSendValue('');
       setSendError('');
+      setSendSuccess('');
       setShowRecordsModal(false);
       return;
     }
@@ -229,13 +231,16 @@ export default function ActuatorDetailsModal({
     return isNaN(d.getTime()) ? '—' : d.toLocaleString();
   }, [detail]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     setSendError('');
+    setSendSuccess('');
+    
     const n = Number(sendValue);
     if (sendValue.trim() === '' || Number.isNaN(n)) {
       setSendError('Ingresá un número válido.');
       return;
     }
+
     // Validación opcional contra el rango, si está disponible:
     if (detail && typeof detail.valorMin === 'number' && typeof detail.valorMax === 'number') {
       if (n < detail.valorMin || n > detail.valorMax) {
@@ -243,10 +248,43 @@ export default function ActuatorDetailsModal({
         return;
       }
     }
-    // Por ahora, solo console.log del número (ej: 30)
-    console.log(n);
-    // Si querés, podés limpiar el input:
-    // setSendValue('');
+
+    // Enviar al endpoint
+    try {
+      setSending(true);
+      
+      const res = await fetch(api(`/api/actuators/${actuatorId}/send`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ valor: n }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al enviar el valor');
+      }
+
+      // Éxito
+      setSendSuccess(
+        data.warning 
+          ? `✓ ${data.message}. ${data.warning}` 
+          : `✓ ${data.message}. Registros creados: ${data.recordsCreated}`
+      );
+      
+      // Limpiar input después de 3 segundos
+      setTimeout(() => {
+        setSendValue('');
+        setSendSuccess('');
+      }, 3000);
+
+      console.log('[Actuador] Envío exitoso:', data);
+    } catch (error) {
+      console.error('[Actuador] Error en envío:', error);
+      setSendError(error instanceof Error ? error.message : 'Error al enviar el valor');
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleOpenRecords = () => {
@@ -302,7 +340,8 @@ export default function ActuatorDetailsModal({
                         value={sendValue}
                         onChange={(e) => setSendValue(e.target.value)}
                         placeholder="p. ej. 30"
-                        className="w-40 px-3 py-2 border border-gray-300 text-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        disabled={sending}
+                        className="w-40 px-3 py-2 border border-gray-300 text-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                       />
                       <span className="text-gray-700 select-none">
                         {detail.unidad || ''}
@@ -310,12 +349,28 @@ export default function ActuatorDetailsModal({
                       <button
                         type="button"
                         onClick={handleSend}
-                        className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        disabled={sending}
+                        className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
-                        Enviar
+                        {sending ? 'Enviando...' : 'Enviar'}
                       </button>
                     </div>
-                    {sendError && <p className="text-xs text-red-600 mt-1">{sendError}</p>}
+                    {sendError && (
+                      <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {sendError}
+                      </p>
+                    )}
+                    {sendSuccess && (
+                      <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {sendSuccess}
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -402,7 +457,7 @@ export default function ActuatorDetailsModal({
                                 type="button"
                                 onClick={() => {
                                   onOpenProject?.(project.id);
-                                  onClose(); // Cerrar el modal del actuador
+                                  onClose();
                                 }}
                                 className="text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                 title="Ver detalle del proyecto"
@@ -441,7 +496,7 @@ export default function ActuatorDetailsModal({
         onClose={handleCloseRecords}
         onOpenProject={(projectId) => {
           handleCloseRecords();
-          onClose(); // También cerrar el modal del actuador
+          onClose();
           onOpenProject?.(projectId);
         }}
       />

@@ -3,6 +3,7 @@ import { prisma } from './prisma';
 
 let mqttClient: mqtt.MqttClient | null = null;
 let isInitialized = false;
+let isConnecting = false;
 
 interface SensorMessage {
   valor: number;
@@ -20,20 +21,28 @@ export async function initMqttService() {
     return;
   }
 
+  if (isConnecting) {
+    console.log('[MQTT] Ya hay una conexión en proceso');
+    return;
+  }
+
   const brokerUrl = process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883';
   
   console.log(`[MQTT] Conectando al broker: ${brokerUrl}`);
+  isConnecting = true;
 
   try {
     mqttClient = mqtt.connect(brokerUrl, {
       clientId: `simmer_server_${Math.random().toString(16).slice(2, 10)}`,
       clean: true,
       reconnectPeriod: 5000,
+      connectTimeout: 30000, // 30 segundos de timeout
     });
 
     mqttClient.on('connect', async () => {
       console.log('[MQTT] ✓ Conectado al broker');
       isInitialized = true;
+      isConnecting = false;
       
       // Suscribirse a todos los tópicos de sensores activos
       await subscribeToActiveSensors();
@@ -52,19 +61,23 @@ export async function initMqttService() {
 
     mqttClient.on('error', (error) => {
       console.error('[MQTT] Error de conexión:', error);
+      isConnecting = false;
     });
 
     mqttClient.on('offline', () => {
       console.log('[MQTT] Cliente desconectado');
+      isInitialized = false;
     });
 
     mqttClient.on('reconnect', () => {
       console.log('[MQTT] Reconectando...');
+      isConnecting = true;
     });
 
   } catch (error) {
     console.error('[MQTT] Error al inicializar servicio:', error);
     isInitialized = false;
+    isConnecting = false;
   }
 }
 
@@ -238,29 +251,133 @@ export function closeMqttConnection() {
     mqttClient.end();
     mqttClient = null;
     isInitialized = false;
+    isConnecting = false;
   }
 }
 
 /**
- * Publica un mensaje a un tópico MQTT
- * (útil para actuadores en el futuro)
+ * Verifica si el cliente MQTT está conectado
  */
-export function publishMqttMessage(topic: string, message: object): Promise<void> {
+export function isMqttConnected(): boolean {
+  return mqttClient !== null && mqttClient.connected;
+}
+
+/**
+ * Espera a que el cliente MQTT esté conectado (con timeout)
+ * RENOMBRADO para evitar conflicto con el parámetro
+ */
+function waitForMqttConnection(timeoutMs: number = 10000): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (!mqttClient || !mqttClient.connected) {
-      reject(new Error('Cliente MQTT no conectado'));
+    // Si ya está conectado, resolver inmediatamente
+    if (mqttClient && mqttClient.connected) {
+      resolve();
       return;
     }
 
-    const payload = JSON.stringify(message);
-    mqttClient.publish(topic, payload, (error) => {
-      if (error) {
-        console.error(`[MQTT] Error publicando a "${topic}":`, error);
-        reject(error);
-      } else {
-        console.log(`[MQTT] ✓ Mensaje publicado a "${topic}":`, message);
-        resolve();
-      }
-    });
+    const timeout = setTimeout(() => {
+      reject(new Error('Timeout esperando conexión MQTT'));
+    }, timeoutMs);
+
+    // Esperar el evento 'connect'
+    const onConnect = () => {
+      clearTimeout(timeout);
+      mqttClient?.off('connect', onConnect);
+      mqttClient?.off('error', onError);
+      resolve();
+    };
+
+    const onError = (err: Error) => {
+      clearTimeout(timeout);
+      mqttClient?.off('connect', onConnect);
+      mqttClient?.off('error', onError);
+      reject(err);
+    };
+
+    mqttClient?.once('connect', onConnect);
+    mqttClient?.once('error', onError);
+
+    // Si el cliente no existe, intentar inicializar
+    if (!mqttClient) {
+      initMqttService()
+        .then(() => {
+          // Después de inicializar, ya debería estar conectándose
+          // Los listeners de arriba manejarán el resultado
+        })
+        .catch(reject);
+    }
   });
+}
+
+/**
+ * Publica un mensaje a un tópico MQTT
+ * Incluye reintentos automáticos y espera de conexión
+ */
+export async function publishMqttMessage(
+  topic: string, 
+  message: object,
+  options: { 
+    retries?: number;
+    retryDelay?: number;
+    shouldWaitForConnection?: boolean;  // <- RENOMBRADO
+  } = {}
+): Promise<void> {
+  const { 
+    retries = 3, 
+    retryDelay = 1000,
+    shouldWaitForConnection = true  // <- RENOMBRADO
+  } = options;
+
+  // Si se solicita, esperar a que el cliente esté conectado
+  if (shouldWaitForConnection) {
+    try {
+      await waitForMqttConnection(10000);  // <- USA LA FUNCIÓN CORRECTA
+    } catch (error) {
+      console.error('[MQTT] Error esperando conexión:', error);
+      throw new Error('Cliente MQTT no disponible. Verifique que el broker esté en ejecución.');
+    }
+  }
+
+  // Intentar publicar con reintentos
+  let lastError: Error | null = null;
+  
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      // Verificar cliente
+      if (!mqttClient) {
+        throw new Error('Cliente MQTT no inicializado');
+      }
+
+      if (!mqttClient.connected) {
+        throw new Error('Cliente MQTT no conectado');
+      }
+
+      // Publicar mensaje
+      const payload = JSON.stringify(message);
+      
+      await new Promise<void>((resolve, reject) => {
+        mqttClient!.publish(topic, payload, { qos: 1 }, (error) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      console.log(`[MQTT] ✓ Mensaje publicado a "${topic}":`, message);
+      return; // Éxito
+
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.error(`[MQTT] Intento ${attempt}/${retries} falló para "${topic}":`, lastError.message);
+      
+      // Si no es el último intento, esperar antes de reintentar
+      if (attempt < retries) {
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      }
+    }
+  }
+
+  // Si llegamos aquí, todos los intentos fallaron
+  throw lastError || new Error('Error desconocido al publicar mensaje MQTT');
 }
