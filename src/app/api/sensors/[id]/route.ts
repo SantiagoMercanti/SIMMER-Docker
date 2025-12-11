@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { requireCanMutate, requireAdmin } from '@/lib/auth';
+import { requireCanMutate, getCurrentUser, canAccessResource, canModifyResource } from '@/lib/auth';
 
 function toIntId(id: string) {
   const n = Number(id);
@@ -20,14 +20,20 @@ export async function GET(
   }
 
   try {
+    // Requiere autenticación
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
     const s = await prisma.sensor.findUnique({
       where: { sensor_id: intId },
       select: {
         sensor_id: true,
         nombre: true,
         descripcion: true,
-        unidad_medida_id: true,  // ← ID de la unidad
-        unidadMedida: {          // ← Relación con UnidadMedida
+        unidad_medida_id: true,
+        unidadMedida: {
           select: {
             id: true,
             nombre: true,
@@ -42,6 +48,7 @@ export async function GET(
         createdAt: true,
         updatedAt: true,
         activo: true,
+        creadorId: true,  // Incluir para verificar ownership
       },
     });
 
@@ -49,13 +56,14 @@ export async function GET(
       return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
     }
 
+    // Verificar ownership
+    if (!canAccessResource(s.creadorId, user)) {
+      return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
+    }
+
     // Si está inactivo, solo admin puede verlo
-    if (!s.activo) {
-      try {
-        await requireAdmin();
-      } catch {
-        return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
-      }
+    if (!s.activo && user.role !== 'admin') {
+      return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
     }
 
     // Devolver con la información de la unidad
@@ -64,7 +72,7 @@ export async function GET(
       nombre: s.nombre,
       descripcion: s.descripcion ?? null,
       unidadMedidaId: s.unidad_medida_id,
-      unidadMedida: s.unidadMedida,  // ← Objeto completo de la unidad
+      unidadMedida: s.unidadMedida,
       valorMin: s.valor_min ?? null,
       valorMax: s.valor_max ?? null,
       estado: Boolean(s.estado),
@@ -90,28 +98,41 @@ export async function PATCH(
   }
 
   try {
-    // Bloquea a 'operator' y lanza 401 si no hay sesión
-    await requireCanMutate();
+    // Requiere permisos de mutación
+    const acting = await requireCanMutate();
+
+    // Verificar que el sensor existe y obtener su creador
+    const existing = await prisma.sensor.findUnique({
+      where: { sensor_id: intId },
+      select: { creadorId: true, activo: true },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
+    }
+
+    // Verificar ownership para modificación
+    if (!canModifyResource(existing.creadorId, acting)) {
+      return NextResponse.json({ error: 'No tienes permisos para editar este sensor' }, { status: 403 });
+    }
 
     const body = await req.json();
 
     // Campos opcionales (actualización parcial)
     const nombre: string | undefined = body?.nombre?.trim?.() || undefined;
-    const unidadMedidaId: number | undefined = body?.unidadMedidaId;  // ← CAMBIO
+    const unidadMedidaId: number | undefined = body?.unidadMedidaId;
     const descripcionRaw: unknown = body?.descripcion;
     const fuenteDatosRaw: unknown = body?.fuenteDatos;
 
-    // Normalizamos opcionales string -> string|null
     const descripcion =
       typeof descripcionRaw === 'string'
         ? (descripcionRaw.trim() || null)
-        : undefined; // undefined = no tocar; null = setear a null
+        : undefined;
     const fuenteDatos =
       typeof fuenteDatosRaw === 'string'
         ? (fuenteDatosRaw.trim() || null)
         : undefined;
 
-    // Numéricos opcionales: si vienen deben ser válidos
     let valorMin: number | undefined;
     let valorMax: number | undefined;
 
@@ -131,34 +152,26 @@ export async function PATCH(
       valorMax = n;
     }
 
-    // Si vinieron ambos, validamos relación
     if (valorMin !== undefined && valorMax !== undefined && valorMin > valorMax) {
       return NextResponse.json({ error: 'valorMax debe ser ≥ valorMin' }, { status: 400 });
     }
 
-    // Construimos el objeto de actualización SOLO con lo presente
     const data: Record<string, unknown> = {};
     if (nombre !== undefined) data.nombre = nombre;
-    if (descripcion !== undefined) data.descripcion = descripcion; // string|null
-    if (unidadMedidaId !== undefined) data.unidad_medida_id = unidadMedidaId;  // ← CAMBIO+    
+    if (descripcion !== undefined) data.descripcion = descripcion;
+    if (unidadMedidaId !== undefined) data.unidad_medida_id = unidadMedidaId;
     if (valorMin !== undefined) data.valor_min = valorMin;
     if (valorMax !== undefined) data.valor_max = valorMax;
-    if (fuenteDatos !== undefined) data.fuente_datos = fuenteDatos; // string|null
+    if (fuenteDatos !== undefined) data.fuente_datos = fuenteDatos;
 
-    // --- Reactivación (solo admin) ---
+    // Reactivación (solo admin)
     if (body?.activo !== undefined) {
-      // Permitimos únicamente setear a true por PATCH
       if (body.activo === true) {
-        try {
-          await requireAdmin();
-        } catch (err: unknown) {
-          const status = (err as { status?: number })?.status ?? 403;
-          const msg = status === 401 ? 'No autenticado' : 'Solo admin puede reactivar sensores';
-          return NextResponse.json({ error: msg }, { status });
+        if (acting.role !== 'admin') {
+          return NextResponse.json({ error: 'Solo admin puede reactivar sensores' }, { status: 403 });
         }
-        data.activo = true; // ← reactivación
+        data.activo = true;
       } else if (body.activo === false) {
-        // Desactivar NO por PATCH: se hace por DELETE (soft-delete)
         return NextResponse.json({ error: 'Para desactivar use DELETE /api/sensors/:id' }, { status: 400 });
       } else {
         return NextResponse.json({ error: 'activo debe ser booleano' }, { status: 400 });
@@ -199,8 +212,22 @@ export async function DELETE(
   }
 
   try {
-    // Bloquea a 'operator' y lanza 401 si no hay sesión
-    await requireCanMutate();
+    // ✅ Requiere permisos de mutación
+    const acting = await requireCanMutate();
+
+    // ✅ Verificar ownership
+    const existing = await prisma.sensor.findUnique({
+      where: { sensor_id: intId },
+      select: { creadorId: true },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
+    }
+
+    if (!canModifyResource(existing.creadorId, acting)) {
+      return NextResponse.json({ error: 'No tienes permisos para eliminar este sensor' }, { status: 403 });
+    }
 
     await prisma.sensor.update({
       where: { sensor_id: intId },

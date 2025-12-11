@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireCanMutate, requireAdmin } from '@/lib/auth';
+import { requireCanMutate, requireAdmin, getCurrentUser, getOwnershipFilter } from '@/lib/auth';
 
 // -------- GET /api/projects --------
 // Devuelve una lista simplificada para el dashboard: [{ id: string, name: string, activo: boolean }]
@@ -8,19 +8,26 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const includeInactive = searchParams.get('includeInactive') === 'true';
 
-  if (includeInactive) {
-    try {
-      await requireAdmin(); // solo admin puede ver inactivos
-    } catch (err: unknown) {
-      const status = (err as { status?: number })?.status ?? 403;
-      const msg = status === 401 ? 'No autenticado' : 'No autorizado';
-      return NextResponse.json({ error: msg }, { status });
-    }
+  // Requiere autenticación
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+  }
+
+  // Solo admin puede ver inactivos
+  if (includeInactive && user.role !== 'admin') {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
   try {
+    // Obtener filtro de ownership según el rol del usuario
+    const ownershipFilter = getOwnershipFilter(user.id, user.role);
+
     const proyectos = await prisma.proyecto.findMany({
-      where: includeInactive ? {} : { activo: true },
+      where: {
+        ...(includeInactive ? {} : { activo: true }),
+        ...ownershipFilter, // Filtra por creadorId (excepto admin)
+      },
       select: {
         project_id: true,
         nombre: true,
@@ -45,8 +52,8 @@ export async function GET(req: Request) {
 // -------- POST /api/projects --------
 export async function POST(req: Request) {
   try {
-    // Bloquea a 'operator' (y lanza 401 si no hay sesión)
-    await requireCanMutate();
+    // Bloquea a 'operator' y obtiene el usuario autenticado
+    const acting = await requireCanMutate();
 
     const body = await req.json().catch(() => ({}));
     const {
@@ -79,17 +86,33 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Debe seleccionar al menos un sensor o actuador.' }, { status: 400 });
     }
 
-    // Verificación opcional de existencia (fail-fast)
+    // Verificar ownership de sensores y actuadores
     if (sensorIds.length) {
-      const countSens = await prisma.sensor.count({ where: { sensor_id: { in: sensorIds } } });
+      const ownershipFilter = getOwnershipFilter(acting.id, acting.role);
+      const countSens = await prisma.sensor.count({ 
+        where: { 
+          sensor_id: { in: sensorIds },
+          ...ownershipFilter,
+        } 
+      });
       if (countSens !== sensorIds.length) {
-        return NextResponse.json({ error: 'Uno o más sensorIds no existen.' }, { status: 400 });
+        return NextResponse.json({ 
+          error: 'Uno o más sensores no existen o no te pertenecen.' 
+        }, { status: 400 });
       }
     }
     if (actuatorIds.length) {
-      const countActs = await prisma.actuador.count({ where: { actuator_id: { in: actuatorIds } } });
+      const ownershipFilter = getOwnershipFilter(acting.id, acting.role);
+      const countActs = await prisma.actuador.count({ 
+        where: { 
+          actuator_id: { in: actuatorIds },
+          ...ownershipFilter,
+        } 
+      });
       if (countActs !== actuatorIds.length) {
-        return NextResponse.json({ error: 'Uno o más actuatorIds no existen.' }, { status: 400 });
+        return NextResponse.json({ 
+          error: 'Uno o más actuadores no existen o no te pertenecen.' 
+        }, { status: 400 });
       }
     }
 
@@ -98,13 +121,12 @@ export async function POST(req: Request) {
       data: {
         nombre: nombre.trim(),
         descripcion: descripcion.trim(),
+        creadorId: acting.id, // ASIGNAR EL CREADOR
         sensores: {
           create: sensorIds.map((sid: number) => ({
             sensor: { connect: { sensor_id: sid } },
           })),
         },
-
-        // Relaciones: Proyecto.actuadores -> ProyectoActuador[]
         actuadores: {
           create: actuatorIds.map((aid: number) => ({
             actuador: { connect: { actuator_id: aid } },

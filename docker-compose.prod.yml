@@ -43,8 +43,10 @@ services:
       - .env.production
     environment:
       NODE_ENV: "production"
-      # Asegurate que .env.production contenga BASE_PATH=/a03 y NEXT_PUBLIC_BASE_PATH=/a03 si tu app los usa en runtime.
+      # Brocker local
       MQTT_BROKER_URL: "mqtt://mosquitto:1883"
+      # Brocker remoto (descomentar si se quiere usar)
+      # MQTT_BROKER_URL: "172.16.248.85:1883"
     expose:
       - "3000"           # <- solo visible para la red interna del compose
     depends_on:

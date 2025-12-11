@@ -46,6 +46,11 @@ model UserMetadata {
   // registros de actuadores que hizo este usuario
   registrosActuador RegistroActuador[]
 
+  // NUEVO: Recursos creados por el usuario
+  sensoresCreados   Sensor[]   @relation(name: "SensoresCreados")
+  actuadoresCreados Actuador[] @relation(name: "ActuadoresCreados")
+  proyectosCreados  Proyecto[] @relation(name: "ProyectosCreados")
+
   @@unique([email, activo])
   @@index([tipo])
   @@index([createdAt])
@@ -81,9 +86,13 @@ model Sensor {
   estado           Boolean      @default(true)
   fuente_datos     String?
 
+  // Ownership
+  creadorId        String
+  creador          UserMetadata @relation(name: "SensoresCreados", fields: [creadorId], references: [id])
+
   // Relación N:M con proyectos a través de ProyectoSensor
   proyectos ProyectoSensor[]
-  alertas SensorAlert[]
+  alertas   SensorAlert[]
 
   // Ya no cuelgan mediciones directamente del sensor
 
@@ -94,6 +103,7 @@ model Sensor {
   @@index([nombre])
   @@index([activo])
   @@index([unidad_medida_id])
+  @@index([creadorId])  // Índice para filtrar por creador
 }
 
 model Actuador {
@@ -107,6 +117,10 @@ model Actuador {
   estado           Boolean      @default(true)
   fuente_datos     String?
 
+  // Ownership
+  creadorId        String
+  creador          UserMetadata @relation(name: "ActuadoresCreados", fields: [creadorId], references: [id])
+
   // Relación N:M con proyectos a través de ProyectoActuador
   proyectos ProyectoActuador[]
 
@@ -118,13 +132,18 @@ model Actuador {
 
   @@index([nombre])
   @@index([activo])
-  @@index([unidad_medida_id]) // ← índice para la FK
+  @@index([unidad_medida_id])
+  @@index([creadorId])  // Índice para filtrar por creador
 }
 
 model Proyecto {
   project_id  Int     @id @default(autoincrement())
   nombre      String
   descripcion String?
+
+  // Ownership
+  creadorId   String
+  creador     UserMetadata @relation(name: "ProyectosCreados", fields: [creadorId], references: [id])
 
   sensores   ProyectoSensor[]
   actuadores ProyectoActuador[]
@@ -136,6 +155,7 @@ model Proyecto {
 
   @@index([nombre])
   @@index([activo])
+  @@index([creadorId])  // Índice para filtrar por creador
 }
 
 // --- Tablas pivote (N:M) ---
@@ -172,7 +192,7 @@ model ProyectoActuador {
 }
 
 // --- Lecturas / Registros ---
-// Cada medición/regsitro pertenece a un vínculo Proyecto–Sensor / Proyecto–Actuador
+// Cada medición/registro pertenece a un vínculo Proyecto–Sensor / Proyecto–Actuador
 
 model MedicionSensor {
   id               Int @id @default(autoincrement())
@@ -222,13 +242,13 @@ model SensorAlert {
   id        Int      @id @default(autoincrement())
   sensorId  Int
   sensor    Sensor   @relation(fields: [sensorId], references: [sensor_id], onDelete: Cascade)
-  
+
   valor     Float    // Valor que disparó la alerta
   timestamp DateTime @default(now()) // Cuándo se disparó la alerta
-  
+
   // Cooldown: última alerta enviada para este sensor
   // Usado para evitar spam de emails
-  
+
   @@index([sensorId])
   @@index([timestamp])
 }

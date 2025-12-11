@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireCanMutate, requireAdmin } from '@/lib/auth';
+import { requireCanMutate, getCurrentUser, canAccessResource, canModifyResource, getOwnershipFilter } from '@/lib/auth';
 
 // GET /api/projects/:id
 export async function GET(
@@ -13,13 +13,19 @@ export async function GET(
     return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
   }
 
-  // Traemos el proyecto y solo las relaciones activas
+  // Requiere autenticación
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+  }
+
   const p = await prisma.proyecto.findUnique({
     where: { project_id: intId },
     select: {
       project_id: true,
       nombre: true,
       descripcion: true,
+      creadorId: true,  // Para verificar ownership
 
       // Solo sensores ACTIVOS vinculados
       sensores: {
@@ -29,8 +35,8 @@ export async function GET(
             select: {
               sensor_id: true,
               nombre: true,
-              unidad_medida_id: true,  // ← ID de la unidad
-              unidadMedida: {           // ← Relación completa
+              unidad_medida_id: true,
+              unidadMedida: {
                 select: {
                   id: true,
                   nombre: true,
@@ -51,8 +57,8 @@ export async function GET(
             select: {
               actuator_id: true,
               nombre: true,
-              unidad_medida_id: true,  // ← ID de la unidad
-              unidadMedida: {           // ← Relación completa
+              unidad_medida_id: true,
+              unidadMedida: {
                 select: {
                   id: true,
                   nombre: true,
@@ -71,12 +77,16 @@ export async function GET(
     return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 });
   }
 
-  // Normalizamos al formato que el modal espera
+  // Verificar ownership
+  if (!canAccessResource(p.creadorId, user)) {
+    return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 });
+  }
+
   const sensors = p.sensores.map((x) => ({
     id: x.sensor.sensor_id,
     nombre: x.sensor.nombre,
-    unidadMedida: x.sensor.unidadMedida?.simbolo ?? '',  // ← Símbolo de la unidad
-    unidadNombre: x.sensor.unidadMedida?.nombre,         // ← Opcional: nombre completo
+    unidadMedida: x.sensor.unidadMedida?.simbolo ?? '',
+    unidadNombre: x.sensor.unidadMedida?.nombre,
   }));
 
   const actuators = p.actuadores.map((x) => ({
@@ -107,8 +117,23 @@ export async function PATCH(
   }
 
   try {
-    // Bloquea a 'operator' y lanza 401 si no hay sesión
-    await requireCanMutate();
+    // Requiere permisos de mutación
+    const acting = await requireCanMutate();
+
+    // Verificar que el proyecto existe y obtener su creador
+    const existing = await prisma.proyecto.findUnique({
+      where: { project_id: projectId },
+      select: { creadorId: true },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 });
+    }
+
+    // Verificar ownership para modificación
+    if (!canModifyResource(existing.creadorId, acting)) {
+      return NextResponse.json({ error: 'No tienes permisos para editar este proyecto' }, { status: 403 });
+    }
 
     const body = await req.json().catch(() => ({}));
     const {
@@ -147,12 +172,8 @@ export async function PATCH(
     // Reactivación (solo admin)
     if (activo !== undefined) {
       if (activo === true) {
-        try {
-          await requireAdmin();
-        } catch (err: unknown) {
-          const status = (err as { status?: number })?.status ?? 403;
-          const msg = status === 401 ? 'No autenticado' : 'Solo admin puede reactivar proyectos';
-          return NextResponse.json({ error: msg }, { status });
+        if (acting.role !== 'admin') {
+          return NextResponse.json({ error: 'Solo admin puede reactivar proyectos' }, { status: 403 });
         }
       } else if (activo === false) {
         return NextResponse.json({ error: 'Para desactivar use DELETE /api/projects/:id' }, { status: 400 });
@@ -161,17 +182,33 @@ export async function PATCH(
       }
     }
 
-    // Validaciones opcionales de existencia
+    // Verificar ownership de sensores y actuadores
     if (sensorIds && sensorIds.length) {
-      const countSens = await prisma.sensor.count({ where: { sensor_id: { in: sensorIds } } });
+      const ownershipFilter = getOwnershipFilter(acting.id, acting.role);
+      const countSens = await prisma.sensor.count({ 
+        where: { 
+          sensor_id: { in: sensorIds },
+          ...ownershipFilter,
+        } 
+      });
       if (countSens !== sensorIds.length) {
-        return NextResponse.json({ error: 'Uno o más sensorIds no existen.' }, { status: 400 });
+        return NextResponse.json({ 
+          error: 'Uno o más sensores no existen o no te pertenecen.' 
+        }, { status: 400 });
       }
     }
     if (actuatorIds && actuatorIds.length) {
-      const countActs = await prisma.actuador.count({ where: { actuator_id: { in: actuatorIds } } });
+      const ownershipFilter = getOwnershipFilter(acting.id, acting.role);
+      const countActs = await prisma.actuador.count({ 
+        where: { 
+          actuator_id: { in: actuatorIds },
+          ...ownershipFilter,
+        } 
+      });
       if (countActs !== actuatorIds.length) {
-        return NextResponse.json({ error: 'Uno o más actuatorIds no existen.' }, { status: 400 });
+        return NextResponse.json({ 
+          error: 'Uno o más actuadores no existen o no te pertenecen.' 
+        }, { status: 400 });
       }
     }
 
@@ -181,12 +218,8 @@ export async function PATCH(
     if (descripcion !== undefined) updateData.descripcion = descripcion.trim();
     if (activo !== undefined) updateData.activo = activo;
 
-    // Transacción: update + reset pivotes (solo si se enviaron)
+    // Transacción: update + reset pivotes
     const updated = await prisma.$transaction(async (tx) => {
-      // Asegurar existencia
-      const exists = await tx.proyecto.findUnique({ where: { project_id: projectId }, select: { project_id: true } });
-      if (!exists) throw new Error('NOT_FOUND');
-
       // Actualizar campos básicos
       if (Object.keys(updateData).length > 0) {
         await tx.proyecto.update({
@@ -239,10 +272,7 @@ export async function PATCH(
   }
 }
 
-/**
- * DELETE /api/projects/:id
- * Soft-delete: marca activo=false
- */
+// DELETE /api/projects/:id
 export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -254,12 +284,26 @@ export async function DELETE(
   }
 
   try {
-    // Bloquea a 'operator' y lanza 401 si no hay sesión
-    await requireCanMutate();
+    // ✅ Requiere permisos de mutación
+    const acting = await requireCanMutate();
+
+    // ✅ Verificar ownership
+    const existing = await prisma.proyecto.findUnique({
+      where: { project_id: projectId },
+      select: { creadorId: true },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 });
+    }
+
+    if (!canModifyResource(existing.creadorId, acting)) {
+      return NextResponse.json({ error: 'No tienes permisos para eliminar este proyecto' }, { status: 403 });
+    }
 
     await prisma.proyecto.update({
       where: { project_id: projectId },
-      data: { activo: false }, // soft-delete
+      data: { activo: false },
     });
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {

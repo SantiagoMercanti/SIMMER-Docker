@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { getCurrentUser, canAccessResource } from '@/lib/auth';
 
 const MAX_MEASUREMENTS = 200;
 
@@ -26,13 +27,20 @@ export async function GET(
       );
     }
 
-    // Verificar que el sensor existe y está activo
+    // Requiere autenticación
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
+    // Verificar que el sensor existe
     const sensor = await prisma.sensor.findUnique({
       where: { sensor_id: sensorId },
       select: {
         sensor_id: true,
         nombre: true,
         activo: true,
+        creadorId: true,  // Incluir para verificar ownership
         unidadMedida: {
           select: {
             simbolo: true,
@@ -48,7 +56,16 @@ export async function GET(
       );
     }
 
-    if (!sensor.activo) {
+    // ✅ Verificar ownership del sensor
+    if (!canAccessResource(sensor.creadorId, user)) {
+      return NextResponse.json(
+        { error: 'Sensor no encontrado' },
+        { status: 404 }
+      );
+    }
+
+    // Si está inactivo, solo admin puede ver mediciones
+    if (!sensor.activo && user.role !== 'admin') {
       return NextResponse.json(
         { error: 'Sensor inactivo' },
         { status: 404 }
@@ -75,12 +92,17 @@ export async function GET(
     const sortDir: Prisma.SortOrder =
       sortDirection === 'asc' ? 'asc' : 'desc';
 
-    // 1) Construimos el filtro del ProyectoSensor tipado
+    // Construir el filtro del ProyectoSensor
     let proyectoSensorWhere: Prisma.ProyectoSensorWhereInput = {
       sensorId,
-      proyecto: { activo: true }, // solo proyectos activos
+      proyecto: { 
+        activo: true,
+        // Filtrar proyectos por ownership (admin ve todos)
+        ...(user.role !== 'admin' ? { creadorId: user.id } : {}),
+      },
     };
 
+    // Filtrar por proyecto específico si se proporciona
     if (projectIdParam) {
       const projId = Number(projectIdParam);
       if (Number.isInteger(projId) && projId > 0) {
@@ -91,7 +113,6 @@ export async function GET(
       }
     }
 
-    // 2) MedicionSensorWhereInput usando el filtro anterior
     const whereClause: Prisma.MedicionSensorWhereInput = {
       proyectoSensor: proyectoSensorWhere,
     };

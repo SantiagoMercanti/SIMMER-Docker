@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { requireCanMutate, requireAdmin } from '@/lib/auth';
+import { requireCanMutate, getCurrentUser, canAccessResource, canModifyResource } from '@/lib/auth';
 
 function toIntId(id: string) {
   const n = Number(id);
@@ -20,14 +20,20 @@ export async function GET(
   }
 
   try {
+    // ✅ Requiere autenticación
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
     const a = await prisma.actuador.findUnique({
       where: { actuator_id: intId },
       select: {
         actuator_id: true,
         nombre: true,
         descripcion: true,
-        unidad_medida_id: true,  // ← ID de la unidad
-        unidadMedida: {          // ← Relación con UnidadMedida
+        unidad_medida_id: true,
+        unidadMedida: {
           select: {
             id: true,
             nombre: true,
@@ -42,28 +48,30 @@ export async function GET(
         createdAt: true,
         updatedAt: true,
         activo: true,
+        creadorId: true,  // ✅ Incluir para verificar ownership
       },
     });
+
     if (!a) {
       return NextResponse.json({ error: 'Actuador no encontrado' }, { status: 404 });
     }
 
-    // Si está inactivo, solo admin puede verlo
-    if (!a.activo) {
-      try {
-        await requireAdmin();
-      } catch {
-        return NextResponse.json({ error: 'Actuador no encontrado' }, { status: 404 }); // o 403 si preferís
-      }
+    // ✅ Verificar ownership
+    if (!canAccessResource(a.creadorId, user)) {
+      return NextResponse.json({ error: 'Actuador no encontrado' }, { status: 404 });
     }
 
-    // Devolvemos floats para rango; strings donde el form hace .trim()
+    // ✅ Si está inactivo, solo admin puede verlo
+    if (!a.activo && user.role !== 'admin') {
+      return NextResponse.json({ error: 'Actuador no encontrado' }, { status: 404 });
+    }
+
     return NextResponse.json({
       id: a.actuator_id,
       nombre: a.nombre,
       descripcion: a.descripcion ?? null,
       unidadMedidaId: a.unidad_medida_id,
-      unidadMedida: a.unidadMedida,  // ← Objeto completo de la unidad
+      unidadMedida: a.unidadMedida,
       valorMin: a.valor_min ?? null,
       valorMax: a.valor_max ?? null,
       estado: Boolean(a.estado),
@@ -89,28 +97,41 @@ export async function PATCH(
   }
 
   try {
-    // Bloquea a 'operator' y lanza 401 si no hay sesión
-    await requireCanMutate();
+    // ✅ Requiere permisos de mutación
+    const acting = await requireCanMutate();
+
+    // ✅ Verificar que el actuador existe y obtener su creador
+    const existing = await prisma.actuador.findUnique({
+      where: { actuator_id: intId },
+      select: { creadorId: true, activo: true },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Actuador no encontrado' }, { status: 404 });
+    }
+
+    // ✅ Verificar ownership para modificación
+    if (!canModifyResource(existing.creadorId, acting)) {
+      return NextResponse.json({ error: 'No tienes permisos para editar este actuador' }, { status: 403 });
+    }
 
     const body = await req.json();
 
     // Campos opcionales (actualización parcial)
     const nombre: string | undefined = body?.nombre?.trim?.() || undefined;
-    const unidadMedidaId: number | undefined = body?.unidadMedidaId;  // ← CAMBIO
+    const unidadMedidaId: number | undefined = body?.unidadMedidaId;
     const descripcionRaw: unknown = body?.descripcion;
     const fuenteDatosRaw: unknown = body?.fuenteDatos;
 
-    // Normalizamos opcionales string -> string|null
     const descripcion =
       typeof descripcionRaw === 'string'
         ? (descripcionRaw.trim() || null)
-        : undefined; // undefined = no tocar; null = setear a null
+        : undefined;
     const fuenteDatos =
       typeof fuenteDatosRaw === 'string'
         ? (fuenteDatosRaw.trim() || null)
         : undefined;
 
-    // Numéricos opcionales: si vienen deben ser válidos
     let valorMin: number | undefined;
     let valorMax: number | undefined;
 
@@ -130,29 +151,23 @@ export async function PATCH(
       valorMax = n;
     }
 
-    // Si vinieron ambos, validamos relación
     if (valorMin !== undefined && valorMax !== undefined && valorMin > valorMax) {
       return NextResponse.json({ error: 'valorMax debe ser ≥ valorMin' }, { status: 400 });
     }
 
-    // Construimos el objeto de actualización SOLO con lo presente
     const data: Record<string, unknown> = {};
     if (nombre !== undefined) data.nombre = nombre;
-    if (descripcion !== undefined) data.descripcion = descripcion; // string|null
-    if (unidadMedidaId !== undefined) data.unidad_medida_id = unidadMedidaId;  // ← CAMBIO+    
+    if (descripcion !== undefined) data.descripcion = descripcion;
+    if (unidadMedidaId !== undefined) data.unidad_medida_id = unidadMedidaId;
     if (valorMin !== undefined) data.valor_min = valorMin;
     if (valorMax !== undefined) data.valor_max = valorMax;
     if (fuenteDatos !== undefined) data.fuente_datos = fuenteDatos;
 
-    // --- Reactivación (solo admin) ---
+    // Reactivación (solo admin)
     if (body?.activo !== undefined) {
       if (body.activo === true) {
-        try {
-          await requireAdmin();
-        } catch (err: unknown) {
-          const status = (err as { status?: number })?.status ?? 403;
-          const msg = status === 401 ? 'No autenticado' : 'Solo admin puede reactivar actuadores';
-          return NextResponse.json({ error: msg }, { status });
+        if (acting.role !== 'admin') {
+          return NextResponse.json({ error: 'Solo admin puede reactivar actuadores' }, { status: 403 });
         }
         data.activo = true;
       } else if (body.activo === false) {
@@ -196,13 +211,28 @@ export async function DELETE(
   }
 
   try {
-    // Bloquea a 'operator' y lanza 401 si no hay sesión
-    await requireCanMutate();
+    // ✅ Requiere permisos de mutación
+    const acting = await requireCanMutate();
+
+    // ✅ Verificar ownership
+    const existing = await prisma.actuador.findUnique({
+      where: { actuator_id: intId },
+      select: { creadorId: true },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Actuador no encontrado' }, { status: 404 });
+    }
+
+    if (!canModifyResource(existing.creadorId, acting)) {
+      return NextResponse.json({ error: 'No tienes permisos para eliminar este actuador' }, { status: 403 });
+    }
 
     await prisma.actuador.update({
       where: { actuator_id: intId },
-      data: { activo: false }, // ← soft-delete
+      data: { activo: false },
     });
+    
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const status = (err as { status?: number })?.status ?? 0;

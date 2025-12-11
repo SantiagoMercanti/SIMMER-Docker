@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { getCurrentUser, canAccessResource } from '@/lib/auth';
 
 const MAX_RECORDS = 200;
 
@@ -32,13 +33,20 @@ export async function GET(
       );
     }
 
-    // Verificar que el actuador existe y está activo
+    // ✅ Requiere autenticación
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+    }
+
+    // Verificar que el actuador existe
     const actuador = await prisma.actuador.findUnique({
       where: { actuator_id: actuadorId },
       select: {
         actuator_id: true,
         nombre: true,
         activo: true,
+        creadorId: true,  // ✅ Incluir para verificar ownership
         unidadMedida: {
           select: {
             simbolo: true,
@@ -54,7 +62,16 @@ export async function GET(
       );
     }
 
-    if (!actuador.activo) {
+    // ✅ Verificar ownership del actuador
+    if (!canAccessResource(actuador.creadorId, user)) {
+      return NextResponse.json(
+        { error: 'Actuador no encontrado' },
+        { status: 404 }
+      );
+    }
+
+    // ✅ Si está inactivo, solo admin puede ver registros
+    if (!actuador.activo && user.role !== 'admin') {
       return NextResponse.json(
         { error: 'Actuador inactivo' },
         { status: 404 }
@@ -85,7 +102,11 @@ export async function GET(
     // Construir filtros de ProyectoActuador tipados
     let proyectoActuadorWhere: Prisma.ProyectoActuadorWhereInput = {
       actuadorId,
-      proyecto: { activo: true }, // Solo proyectos activos
+      proyecto: { 
+        activo: true,
+        // ✅ Filtrar proyectos por ownership (admin ve todos)
+        ...(user.role !== 'admin' ? { creadorId: user.id } : {}),
+      },
     };
 
     // Filtro opcional por proyecto

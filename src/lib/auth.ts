@@ -174,3 +174,50 @@ export async function requireAdmin(): Promise<{
   }
   return auth;
 }
+
+// ============================================
+// HELPERS PARA OWNERSHIP
+// ============================================
+
+/**
+ * Construye un filtro de Prisma para ownership.
+ * - Admin ve todo (filtro vacío)
+ * - Otros roles solo ven recursos que crearon (creadorId)
+ */
+export function getOwnershipFilter(userId: string, userRole: Role) {
+  if (userRole === 'admin') {
+    return {}; // Admin ve todo
+  }
+  return { creadorId: userId }; // Solo sus recursos
+}
+
+/**
+ * Verifica si el usuario actual puede acceder a un recurso específico.
+ * - Admin puede acceder a todo
+ * - Otros solo pueden acceder a recursos que crearon
+ */
+export function canAccessResource(
+  resourceCreatorId: string,
+  currentUser: { id: string; role: Role }
+): boolean {
+  if (currentUser.role === 'admin') return true;
+  return resourceCreatorId === currentUser.id;
+}
+
+/**
+ * Verifica si el usuario actual puede modificar un recurso específico.
+ * Requiere tanto permiso de mutación (no-operator) como ownership.
+ */
+export function canModifyResource(
+  resourceCreatorId: string,
+  currentUser: { id: string; role: Role }
+): boolean {
+  // Si es operator, no puede modificar nada
+  if (!canEdit(currentUser.role)) return false;
+  
+  // Si es admin, puede modificar todo
+  if (currentUser.role === 'admin') return true;
+  
+  // labManager solo puede modificar sus propios recursos
+  return resourceCreatorId === currentUser.id;
+}

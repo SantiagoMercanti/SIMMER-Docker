@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireCanMutate, getCurrentUser } from '@/lib/auth';
+import { requireCanMutate, getCurrentUser, canModifyResource } from '@/lib/auth';
 import { publishMqttMessage, isMqttConnected } from '@/lib/mqtt-service';
 
 // POST /api/actuators/:id/send
@@ -11,7 +11,7 @@ export async function POST(
 ) {
   try {
     // 1. Autenticación: requiere labManager o admin
-    await requireCanMutate();
+    const acting = await requireCanMutate();
     
     // Obtener el usuario actual para el registro
     const currentUser = await getCurrentUser();
@@ -53,6 +53,7 @@ export async function POST(
         valor_min: true,
         valor_max: true,
         fuente_datos: true,
+        creadorId: true,  // ✅ Incluir para verificar ownership
       },
     });
 
@@ -60,6 +61,14 @@ export async function POST(
       return NextResponse.json(
         { error: 'Actuador no encontrado' },
         { status: 404 }
+      );
+    }
+
+    // ✅ Verificar ownership - solo puede enviar el creador o admin
+    if (!canModifyResource(actuador.creadorId, acting)) {
+      return NextResponse.json(
+        { error: 'No tienes permisos para enviar valores a este actuador' },
+        { status: 403 }
       );
     }
 
@@ -132,12 +141,14 @@ export async function POST(
       );
     }
 
-    // 9. SEGUNDO: Si MQTT OK, buscar todos los ProyectoActuador activos
+    // 9. SEGUNDO: Si MQTT OK, buscar ProyectoActuador activos del usuario
     const proyectosActuador = await prisma.proyectoActuador.findMany({
       where: {
         actuadorId: actuador.actuator_id,
         proyecto: {
           activo: true,
+          // ✅ Solo proyectos del usuario (admin ve todos)
+          ...(acting.role !== 'admin' ? { creadorId: acting.id } : {}),
         },
       },
       select: {
@@ -154,7 +165,7 @@ export async function POST(
       return NextResponse.json(
         { 
           message: 'Mensaje MQTT enviado correctamente',
-          warning: 'El actuador no está asociado a ningún proyecto activo, no se guardaron registros en BD',
+          warning: 'El actuador no está asociado a proyectos activos de tu propiedad, no se guardaron registros en BD',
           mqttTopic: actuador.fuente_datos,
           valor,
           timestamp,
