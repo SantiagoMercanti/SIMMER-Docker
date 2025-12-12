@@ -53,7 +53,7 @@ export async function POST(
         valor_min: true,
         valor_max: true,
         fuente_datos: true,
-        creadorId: true,  // ✅ Incluir para verificar ownership
+        creadorId: true,
       },
     });
 
@@ -97,29 +97,22 @@ export async function POST(
       );
     }
 
-    // 6. Verificar conexión MQTT antes de intentar publicar
-    const mqttConnected = isMqttConnected();
-    console.log(`[Actuador Send] Estado MQTT: ${mqttConnected ? 'Conectado' : 'Desconectado'}`);
-
-    if (!mqttConnected) {
-      console.warn('[Actuador Send] MQTT no conectado, intentando enviar de todas formas...');
-    }
-
-    // 7. Preparar el mensaje MQTT
+    // 6. Preparar el mensaje MQTT
     const timestamp = new Date().toISOString();
     const mqttMessage = {
       valor,
       timestamp,
     };
 
-    // 8. PRIMERO: Publicar a MQTT (si falla, no guardamos en BD)
+    // 7. ✅ MEJORADO: Publicar a MQTT con mejor manejo de errores
     try {
-      console.log(`[Actuador Send] Intentando publicar a "${actuador.fuente_datos}":`, mqttMessage);
+      const mqttConnected = isMqttConnected();
+      console.log(`[Actuador Send] Estado MQTT inicial: ${mqttConnected ? 'Conectado' : 'Desconectado'}`);
+      console.log(`[Actuador Send] Publicando a "${actuador.fuente_datos}":`, mqttMessage);
       
       await publishMqttMessage(actuador.fuente_datos, mqttMessage, {
         retries: 3,
         retryDelay: 1000,
-        shouldWaitForConnection: true
       });
       
       console.log(`[Actuador Send] ✓ Mensaje MQTT publicado exitosamente`);
@@ -132,16 +125,13 @@ export async function POST(
         { 
           error: 'No se pudo enviar el mensaje MQTT',
           details: errorMessage,
-          mqttConnected,
-          suggestion: mqttConnected 
-            ? 'El broker rechazó el mensaje. Verifique los permisos del tópico.'
-            : 'El broker MQTT no está conectado. Verifique que el servicio esté en ejecución.'
+          suggestion: 'Verifique que el broker MQTT esté en ejecución y sea accesible desde el contenedor.'
         },
-        { status: 503 } // Service Unavailable
+        { status: 503 }
       );
     }
 
-    // 9. SEGUNDO: Si MQTT OK, buscar ProyectoActuador activos del usuario
+    // 8. Si MQTT OK, buscar ProyectoActuador activos del usuario
     const proyectosActuador = await prisma.proyectoActuador.findMany({
       where: {
         actuadorId: actuador.actuator_id,
@@ -174,7 +164,7 @@ export async function POST(
       );
     }
 
-    // 10. Guardar un RegistroActuador por cada ProyectoActuador
+    // 9. Guardar un RegistroActuador por cada ProyectoActuador
     const registrosData = proyectosActuador.map((pa) => ({
       proyectoActuadorId: pa.id,
       valor,
@@ -190,7 +180,7 @@ export async function POST(
       `[Actuador Send] ✓ Guardados ${result.count} registro(s) para actuador "${actuador.nombre}"`
     );
 
-    // 11. Retornar éxito
+    // 10. Retornar éxito
     return NextResponse.json(
       {
         message: 'Valor enviado correctamente',
