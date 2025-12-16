@@ -29,6 +29,12 @@ type ApiProjectAnyCase = {
   // (fallbacks si en algún momento vienen con otras claves)
   sensores?: Array<{ sensor?: { sensor_id: number; nombre: string; unidad_de_medida?: string } }>;
   actuadores?: Array<{ actuador?: { actuator_id: number; nombre: string; unidad_de_medida?: string } }>;
+
+  // ✅ Información del creador
+  creador?: {
+    email: string;
+    nombreCompleto: string;
+  } | null;
 };
 
 type ProjectDetail = {
@@ -37,6 +43,10 @@ type ProjectDetail = {
   descripcion: string;
   sensors: Array<{ id: number; nombre: string; unidad: string }>;
   actuators: Array<{ id: number; nombre: string; unidad: string }>;
+  creador?: {
+    email: string;
+    nombreCompleto: string;
+  } | null;
 };
 
 type Props = {
@@ -95,7 +105,14 @@ function normalizeProject(p: ApiProjectAnyCase): ProjectDetail {
       }));
   }
 
-  return { id, nombre, descripcion, sensors, actuators };
+  return { 
+    id, 
+    nombre, 
+    descripcion, 
+    sensors, 
+    actuators,
+    creador: p.creador ?? null,
+  };
 }
 
 export default function ProjectDetailsModal({
@@ -150,7 +167,7 @@ export default function ProjectDetailsModal({
           </button>
         </div>
 
-        <div className="px-5 py-4">
+        <div className="px-5 py-4 max-h-[70vh] overflow-y-auto">
           {loading && <p className="text-sm text-gray-500">Cargando...</p>}
 
           {!loading && detail && (
@@ -166,6 +183,18 @@ export default function ProjectDetailsModal({
                 <p className="text-xs font-medium text-gray-500">Descripción</p>
                 <p className="text-gray-800">{detail.descripcion?.trim() || '—'}</p>
               </div>
+
+              {/* ✅ Creado por */}
+              {detail.creador && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500">Usuario</p>
+                  <p className="text-gray-800">
+                    {detail.creador.nombreCompleto}
+                    {' '}
+                    <span className="text-gray-500">({detail.creador.email})</span>
+                  </p>
+                </div>
+              )}
 
               {/* 3) Sensores */}
               <div>

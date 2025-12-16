@@ -27,6 +27,15 @@ export async function GET(
       descripcion: true,
       creadorId: true,  // Para verificar ownership
 
+      // ✅ Incluir información del creador
+      creador: {
+        select: {
+          email: true,
+          nombre: true,
+          apellido: true,
+        }
+      },
+
       // Solo sensores ACTIVOS vinculados
       sensores: {
         where: { sensor: { is: { activo: true } } },
@@ -102,6 +111,11 @@ export async function GET(
     descripcion: p.descripcion ?? '',
     sensors,
     actuators,
+    // ✅ Incluir información del creador en la respuesta
+    creador: p.creador ? {
+      email: p.creador.email,
+      nombreCompleto: `${p.creador.nombre} ${p.creador.apellido}`.trim(),
+    } : null,
   });
 }
 
