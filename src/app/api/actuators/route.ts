@@ -2,6 +2,16 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireCanMutate, getCurrentUser, getOwnershipFilter } from '@/lib/auth';
 
+// Función para normalizar el nombre (sin tildes, minúsculas, sin espacios)
+function normalizeForTopic(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Eliminar tildes
+    .replace(/\s+/g, '') // Eliminar espacios
+    .replace(/[^a-z0-9]/g, ''); // Eliminar caracteres especiales
+}
+
 // GET /api/actuators → [{id, name, activo}]
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -55,7 +65,6 @@ export async function POST(req: Request) {
     const nombre: string = (body?.nombre ?? '').trim();
     const unidadMedidaId: number = body?.unidadMedidaId;
     const descripcion: string | undefined = body?.descripcion?.trim() || undefined;
-    const fuenteDatos: string | undefined = body?.fuenteDatos?.trim() || undefined;
 
     if (body?.valorMin === undefined || body?.valorMin === '') {
       return NextResponse.json({ error: 'Falta valorMin' }, { status: 400 });
@@ -73,7 +82,7 @@ export async function POST(req: Request) {
     if (Number.isNaN(valorMax)) return NextResponse.json({ error: 'valorMax debe ser numérico' }, { status: 400 });
     if (valorMin > valorMax) return NextResponse.json({ error: 'valorMax debe ser ≥ valorMin' }, { status: 400 });
 
-    // ✅ Crear con ownership
+    // ✅ Crear con ownership (sin fuente_datos todavía)
     const created = await prisma.actuador.create({
       data: {
         nombre,
@@ -81,13 +90,26 @@ export async function POST(req: Request) {
         unidad_medida_id: unidadMedidaId,
         valor_min: valorMin,
         valor_max: valorMax,
-        fuente_datos: fuenteDatos,
         creadorId: acting.id,
       },
       select: { actuator_id: true, nombre: true },
     });
 
-    return NextResponse.json({ id: String(created.actuator_id), name: created.nombre }, { status: 201 });
+    // Generar el tópico: simmer/actuador/{nombre_normalizado}{id}
+    const nombreNormalizado = normalizeForTopic(created.nombre);
+    const topico = `simmer/actuador/${nombreNormalizado}${created.actuator_id}`;
+
+    // Actualizar el actuador con el tópico generado
+    await prisma.actuador.update({
+      where: { actuator_id: created.actuator_id },
+      data: { fuente_datos: topico },
+    });
+
+    return NextResponse.json({ 
+      id: String(created.actuator_id), 
+      name: created.nombre,
+      topico: topico 
+    }, { status: 201 });
   } catch (err: unknown) {
     const status = (err as { status?: number })?.status ?? 500;
     if (status === 401) return NextResponse.json({ error: 'No autenticado' }, { status });

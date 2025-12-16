@@ -12,7 +12,7 @@ export type SensorActuatorFormValues = {
   unidadMedidaId: number;
   valorMin: string;
   valorMax: string;
-  fuenteDatos: string;
+  fuenteDatos?: string; // Ahora opcional
 };
 
 type Props = {
@@ -37,6 +37,22 @@ type UnidadMedida = {
   simbolo: string;
   categoria: string;
 };
+
+type SuccessData = {
+  id: string;
+  name: string;
+  topico: string;
+};
+
+// Función para normalizar el nombre (sin tildes, minúsculas, sin espacios)
+function normalizeForTopic(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Eliminar tildes
+    .replace(/\s+/g, '') // Eliminar espacios
+    .replace(/[^a-z0-9]/g, ''); // Eliminar caracteres especiales
+}
 
 // Categorías válidas del enum
 const CATEGORIAS = [
@@ -78,9 +94,12 @@ export default function SensorActuatorForm({
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [conflictData, setConflictData] = useState<ConflictData | null>(null);
   const [isCheckingConflict, setIsCheckingConflict] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successData, setSuccessData] = useState<SuccessData | null>(null);
 
   const panelRef = useRef<HTMLDivElement>(null);
   const confirmModalRef = useRef<HTMLDivElement>(null);
+  const successModalRef = useRef<HTMLDivElement>(null);
 
   const [unidadesDisponibles, setUnidadesDisponibles] = useState<UnidadMedida[]>([]);
   const [loadingUnidades, setLoadingUnidades] = useState(false);
@@ -133,6 +152,8 @@ export default function SensorActuatorForm({
     setShowManageUnits(false);
     setShowDeleteError(false);
     setDeleteErrorData(null);
+    setShowSuccessModal(false);
+    setSuccessData(null);
   }, [
     open,
     asModal,
@@ -148,7 +169,7 @@ export default function SensorActuatorForm({
   useEffect(() => {
     if (!asModal || !open) return;
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !showConfirmModal && !showNewUnitForm && !showDeleteError) {
+      if (e.key === 'Escape' && !showConfirmModal && !showNewUnitForm && !showDeleteError && !showSuccessModal) {
         (onRequestClose ?? onCancel)?.();
       }
     };
@@ -162,7 +183,7 @@ export default function SensorActuatorForm({
       document.removeEventListener('keydown', handleKey);
       document.body.style.overflow = prev;
     };
-  }, [asModal, open, showConfirmModal, showNewUnitForm, showDeleteError, onRequestClose, onCancel]);
+  }, [asModal, open, showConfirmModal, showNewUnitForm, showDeleteError, showSuccessModal, onRequestClose, onCancel]);
 
   const titulo = useMemo(
     () => (initialValues?.nombre ? `Editar ${tipo}` : `Nuevo ${tipo}`),
@@ -171,9 +192,9 @@ export default function SensorActuatorForm({
 
   const handleChange =
     (field: keyof SensorActuatorFormValues) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setValues((v) => ({ ...v, [field]: e.target.value }));
-    };
+      (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        setValues((v) => ({ ...v, [field]: e.target.value }));
+      };
 
   const validate = () => {
     const next: Record<string, string> = {};
@@ -181,7 +202,11 @@ export default function SensorActuatorForm({
     if (!values.nombre.trim()) next.nombre = 'El nombre es obligatorio.';
     if (!values.descripcion.trim()) next.descripcion = 'La descripción es obligatoria.';
     if (!values.unidadMedidaId) next.unidadMedida = 'Debe seleccionar una unidad de medida.';
-    if (!values.fuenteDatos.trim()) next.fuenteDatos = 'La fuente de datos es obligatoria.';
+    // En edición, fuenteDatos es obligatorio (ya existe)
+    // En creación, se generará automáticamente
+    if (editingId && !values.fuenteDatos?.trim()) {
+      next.fuenteDatos = 'La fuente de datos es obligatoria.';
+    }
 
     // Obligatorios:
     if (values.valorMin.trim() === '') next.valorMin = 'El mínimo es obligatorio.';
@@ -201,8 +226,7 @@ export default function SensorActuatorForm({
     return Object.keys(next).length === 0;
   };
 
-  const checkFuenteDatosConflict = async (): Promise<boolean> => {
-    const fuenteDatos = values.fuenteDatos.trim();
+  const checkFuenteDatosConflict = async (fuenteDatos: string): Promise<boolean> => {
     if (!fuenteDatos) return false;
 
     setIsCheckingConflict(true);
@@ -247,14 +271,45 @@ export default function SensorActuatorForm({
     e.preventDefault();
     if (!validate()) return;
 
-    // Verificar conflictos de fuente_datos
-    const hasConflict = await checkFuenteDatosConflict();
+    // Si estamos editando, simplemente enviar con la fuente de datos existente
+    if (editingId) {
+      const hasConflict = await checkFuenteDatosConflict(values.fuenteDatos || '');
+      if (hasConflict) {
+        setShowConfirmModal(true);
+      } else {
+        onSubmit?.(values);
+      }
+      return;
+    }
 
-    if (hasConflict) {
-      setShowConfirmModal(true);
-    } else {
-      // No hay conflicto, proceder directamente
-      onSubmit?.(values);
+    // Si estamos creando, primero crear el elemento para obtener el ID
+    try {
+      const url = tipo === 'sensor' ? api('/api/sensors') : api('/api/actuators');
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(values),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        alert(errorData?.error ?? `Error al crear el ${tipo}`);
+        return;
+      }
+
+      const createdData = await response.json();
+      // createdData debería tener { id, name, topico }
+
+      // Mostrar modal de éxito
+      setSuccessData({
+        id: createdData.id,
+        name: createdData.name,
+        topico: createdData.topico,
+      });
+      setShowSuccessModal(true);
+    } catch (error) {
+      console.error('Error al crear:', error);
+      alert(`Error al crear el ${tipo}`);
     }
   };
 
@@ -267,6 +322,17 @@ export default function SensorActuatorForm({
   const handleCancelConfirm = () => {
     setShowConfirmModal(false);
     setConflictData(null);
+  };
+
+  const handleSuccessClose = () => {
+    setShowSuccessModal(false);
+    setSuccessData(null);
+    // Llamar a onSubmit para actualizar la lista en el dashboard
+    if (onSubmit) {
+      // No necesitamos pasar valores porque ya se creó el elemento
+      // Solo queremos que el dashboard refresque
+      (onRequestClose ?? onCancel)?.();
+    }
   };
 
   // Cargar unidades disponibles
@@ -605,7 +671,7 @@ export default function SensorActuatorForm({
       {/* Unidad de medida con opción de crear nueva */}
       <div>
         <label className="block mb-1 text-sm text-gray-600" htmlFor="unidadMedida">
-          Unidad de medida
+          Unidad de medida esperada
         </label>
         <select
           id="unidadMedida"
@@ -694,23 +760,25 @@ export default function SensorActuatorForm({
         </div>
       </div>
 
-      <div>
-        <label className="block mb-1 text-sm text-gray-600" htmlFor="fuenteDatos">
-          Fuente de datos
-        </label>
-        <input
-          id="fuenteDatos"
-          type="text"
-          value={values.fuenteDatos}
-          onChange={handleChange('fuenteDatos')}
-          placeholder="p. ej. MQTT tópico /bioreactor/ph"
-          className="w-full px-3 py-2 border border-gray-300 text-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          required
-        />
-        {errors.fuenteDatos && (
-          <p className="text-xs text-red-600 mt-1">{errors.fuenteDatos}</p>
-        )}
-      </div>
+      {/* Fuente de datos - Solo mostrar en modo edición */}
+      {editingId && (
+        <div>
+          <label className="block mb-1 text-sm text-gray-600" htmlFor="fuenteDatos">
+            Fuente de datos (tópico MQTT)
+          </label>
+          <input
+            id="fuenteDatos"
+            type="text"
+            value={values.fuenteDatos}
+            className="w-full px-3 py-2 border border-gray-300 text-gray-500 bg-gray-50 rounded-md cursor-not-allowed"
+            disabled
+            readOnly
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            El tópico no se puede modificar una vez creado.
+          </p>
+        </div>
+      )}
 
       <div className="flex items-center justify-end gap-2 pt-2">
         <button
@@ -788,6 +856,79 @@ export default function SensorActuatorForm({
     </div>
   );
 
+  // Modal de éxito con información del tópico
+  const successModalMarkup = showSuccessModal && successData && (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="absolute inset-0 bg-black/50"
+        aria-hidden="true"
+      />
+
+      <div
+        ref={successModalRef}
+        tabIndex={-1}
+        className="relative z-10 w-full max-w-md rounded-xl bg-white p-6 shadow-xl outline-none"
+      >
+        <div className="flex items-start gap-3 mb-4">
+          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+            <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <h4 className="text-lg font-semibold text-gray-900 mb-2">
+              ¡{tipo.charAt(0).toUpperCase() + tipo.slice(1)} creado correctamente!
+            </h4>
+            <p className="text-sm text-gray-700 mb-3">
+              Se creó correctamente el {tipo} <strong>"{successData.name}"</strong>.
+            </p>
+          </div>
+        </div>
+
+        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-sm font-medium text-gray-800 mb-2">
+            Tópico MQTT asignado:
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 px-3 py-2 bg-white border border-gray-300 rounded text-sm font-mono text-gray-800 break-all">
+              {successData.topico}
+            </code>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(successData.topico);
+                alert('Tópico copiado al portapapeles');
+              }}
+              className="flex-shrink-0 p-2 text-blue-600 hover:bg-blue-100 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              title="Copiar tópico"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
+          </div>
+          <p className="text-xs text-gray-600 mt-2">
+            Este tópico se utilizará para comunicarse con el {tipo} vía MQTT.
+          </p>
+        </div>
+
+        <div className="flex items-center justify-end">
+          <button
+            type="button"
+            onClick={handleSuccessClose}
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            Entendido
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   // Modal de error de eliminación de unidad
   const deleteErrorModalMarkup = showDeleteError && deleteErrorData && (
     <div
@@ -856,6 +997,7 @@ export default function SensorActuatorForm({
       <>
         {formMarkup}
         {confirmModalMarkup}
+        {successModalMarkup}
         {deleteErrorModalMarkup}
       </>
     );
@@ -886,6 +1028,7 @@ export default function SensorActuatorForm({
       </div>
 
       {confirmModalMarkup}
+      {successModalMarkup}
       {deleteErrorModalMarkup}
     </>
   );
