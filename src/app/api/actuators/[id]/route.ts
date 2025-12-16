@@ -48,7 +48,14 @@ export async function GET(
         createdAt: true,
         updatedAt: true,
         activo: true,
-        creadorId: true,  // ✅ Incluir para verificar ownership
+        creadorId: true,
+        creador: {
+          select: {
+            email: true,
+            nombre: true,
+            apellido: true,
+          }
+        },
       },
     });
 
@@ -78,6 +85,10 @@ export async function GET(
       fuenteDatos: a.fuente_datos ?? null,
       createdAt: a.createdAt,
       updatedAt: a.updatedAt,
+      creador: a.creador ? {
+        email: a.creador.email,
+        nombreCompleto: `${a.creador.nombre} ${a.creador.apellido}`.trim(),
+      } : null,
     });
   } catch (_err: unknown) {
     console.error('Error en GET /api/actuators/:id', _err);

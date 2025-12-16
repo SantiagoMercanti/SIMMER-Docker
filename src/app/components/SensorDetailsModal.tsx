@@ -41,6 +41,12 @@ type ApiSensorAnyCase = {
   updatedAt?: string;
   updated_at?: string;
   updated?: string;
+
+  // ✅ Información del creador
+  creador?: {
+    email: string;
+    nombreCompleto: string;
+  } | null;
 };
 
 type SensorDetail = {
@@ -55,6 +61,10 @@ type SensorDetail = {
   fuente: string | null;
   createdAt?: string;
   updatedAt?: string;
+  creador?: {
+    email: string;
+    nombreCompleto: string;
+  } | null;
 };
 
 type ProjectInfo = {
@@ -105,6 +115,7 @@ function normalizeSensor(data: ApiSensorAnyCase): SensorDetail {
     fuente,
     createdAt: cAt,
     updatedAt: uAt,
+    creador: data.creador ?? null,
   };
 }
 
@@ -321,6 +332,18 @@ export default function SensorDetailsModal({
                   <p className="text-gray-800">{updatedAtStr}</p>
                 </div>
               </div>
+              
+              {/* ✅ Creado por */}
+              {detail.creador && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500">Usuario</p>
+                  <p className="text-gray-800">
+                    {detail.creador.nombreCompleto}
+                    {' '}
+                    <span className="text-gray-500">({detail.creador.email})</span>
+                  </p>
+                </div>
+              )}
 
               {/* Sección colapsable de proyectos */}
               <div className="border-t pt-3">

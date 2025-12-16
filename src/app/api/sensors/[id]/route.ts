@@ -48,7 +48,14 @@ export async function GET(
         createdAt: true,
         updatedAt: true,
         activo: true,
-        creadorId: true,  // Incluir para verificar ownership
+        creadorId: true,
+        creador: {
+          select: {
+            email: true,
+            nombre: true,
+            apellido: true,
+          }
+        },
       },
     });
 
@@ -66,7 +73,7 @@ export async function GET(
       return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
     }
 
-    // Devolver con la información de la unidad
+    // Devolver con la información de la unidad y creador
     return NextResponse.json({
       id: s.sensor_id,
       nombre: s.nombre,
@@ -79,6 +86,10 @@ export async function GET(
       fuenteDatos: s.fuente_datos ?? null,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
+      creador: s.creador ? {
+        email: s.creador.email,
+        nombreCompleto: `${s.creador.nombre} ${s.creador.apellido}`.trim(),
+      } : null,
     });
   } catch (_err: unknown) {
     console.error('Error en GET /api/sensors/:id', _err);

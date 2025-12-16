@@ -40,6 +40,12 @@ type ApiActuatorAnyCase = {
   updatedAt?: string;
   updated_at?: string;
   updated?: string;
+
+  // ✅ Información del creador
+  creador?: {
+    email: string;
+    nombreCompleto: string;
+  } | null;
 };
 
 type ActuatorDetail = {
@@ -54,6 +60,10 @@ type ActuatorDetail = {
   fuente: string | null;
   createdAt?: string;
   updatedAt?: string;
+  creador?: {
+    email: string;
+    nombreCompleto: string;
+  } | null;
 };
 
 type ProjectInfo = {
@@ -99,6 +109,7 @@ function normalizeActuator(data: ApiActuatorAnyCase): ActuatorDetail {
     fuente,
     createdAt: cAt,
     updatedAt: uAt,
+    creador: data.creador ?? null,
   };
 }
 
@@ -234,7 +245,7 @@ export default function ActuatorDetailsModal({
   const handleSend = async () => {
     setSendError('');
     setSendSuccess('');
-    
+
     const n = Number(sendValue);
     if (sendValue.trim() === '' || Number.isNaN(n)) {
       setSendError('Ingresá un número válido.');
@@ -252,7 +263,7 @@ export default function ActuatorDetailsModal({
     // Enviar al endpoint
     try {
       setSending(true);
-      
+
       const res = await fetch(api(`/api/actuators/${actuatorId}/send`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -267,11 +278,11 @@ export default function ActuatorDetailsModal({
 
       // Éxito
       setSendSuccess(
-        data.warning 
-          ? `✓ ${data.message}. ${data.warning}` 
+        data.warning
+          ? `✓ ${data.message}. ${data.warning}`
           : `✓ ${data.message}. Registros creados: ${data.recordsCreated}`
       );
-      
+
       // Limpiar input después de 3 segundos
       setTimeout(() => {
         setSendValue('');
@@ -425,6 +436,18 @@ export default function ActuatorDetailsModal({
                     <p className="text-gray-800">{updatedAtStr}</p>
                   </div>
                 </div>
+
+                {/* ✅ Creado por */}
+                {detail.creador && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-500">Usuario</p>
+                    <p className="text-gray-800">
+                      {detail.creador.nombreCompleto}
+                      {' '}
+                      <span className="text-gray-500">({detail.creador.email})</span>
+                    </p>
+                  </div>
+                )}
 
                 {/* Sección colapsable de proyectos */}
                 <div className="border-t pt-3">
