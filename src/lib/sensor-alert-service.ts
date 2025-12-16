@@ -14,6 +14,8 @@ interface AlertContext {
   timestamp: Date;
   unidadSimbolo: string;
   proyectos: Array<{ id: number; nombre: string }>;
+  creadorEmail: string;
+  creadorNombre: string;
 }
 
 /**
@@ -65,25 +67,6 @@ async function recordAlert(sensorId: number, valor: number): Promise<void> {
 }
 
 /**
- * Obtiene los emails de usuarios admin y labManager activos
- */
-async function getAlertRecipients(): Promise<string[]> {
-  const users = await prisma.userMetadata.findMany({
-    where: {
-      activo: true,
-      tipo: {
-        in: ['admin', 'labManager'],
-      },
-    },
-    select: {
-      email: true,
-    },
-  });
-
-  return users.map(u => u.email);
-}
-
-/**
  * Genera el contenido HTML del email de alerta
  */
 function generateAlertEmail(context: AlertContext): { subject: string; html: string; text: string } {
@@ -95,6 +78,7 @@ function generateAlertEmail(context: AlertContext): { subject: string; html: str
     timestamp,
     unidadSimbolo,
     proyectos,
+    creadorNombre,
   } = context;
 
   const fechaFormateada = timestamp.toLocaleString('es-AR', {
@@ -114,6 +98,10 @@ function generateAlertEmail(context: AlertContext): { subject: string; html: str
 
   const text = `
 ALERTA DE SENSOR FUERA DE RANGO
+
+Hola ${creadorNombre},
+
+Tu sensor "${sensorNombre}" ha registrado valores fuera del rango estable.
 
 Sensor: ${sensorNombre}
 Estado: El sensor está ${tipoAlerta} del rango estable
@@ -153,6 +141,10 @@ Por favor, revise el sensor y tome las medidas necesarias.
       font-weight: bold;
       margin: 0 0 10px 0;
     }
+    .greeting {
+      margin-bottom: 15px;
+      font-size: 16px;
+    }
     .info-table {
       width: 100%;
       border-collapse: collapse;
@@ -187,6 +179,10 @@ Por favor, revise el sensor y tome las medidas necesarias.
   </style>
 </head>
 <body>
+  <div class="greeting">
+    Hola <strong>${creadorNombre}</strong>,
+  </div>
+
   <div class="alert-box">
     <div class="alert-title">⚠️ Alerta de Sensor Fuera de Rango</div>
     <p>El sensor <strong>${sensorNombre}</strong> ha registrado valores ${tipoAlerta} del rango estable.</p>
@@ -236,30 +232,24 @@ Por favor, revise el sensor y tome las medidas necesarias.
 }
 
 /**
- * Envía alertas por email a todos los usuarios admin y labManager
+ * Envía alerta por email al creador del sensor
  */
-async function sendAlertEmails(context: AlertContext): Promise<void> {
-  const recipients = await getAlertRecipients();
+async function sendAlertEmail(context: AlertContext): Promise<void> {
+  const { creadorEmail } = context;
 
-  if (recipients.length === 0) {
-    console.warn('[ALERT] No hay destinatarios para enviar alertas');
+  if (!creadorEmail) {
+    console.warn('[ALERT] El sensor no tiene un creador con email válido');
     return;
   }
 
   const { subject, html, text } = generateAlertEmail(context);
 
-  // Enviar emails en paralelo
-  const sendPromises = recipients.map(email =>
-    sendMail({ to: email, subject, html, text })
-      .then(() => {
-        console.log(`[ALERT] ✓ Email enviado a: ${email}`);
-      })
-      .catch(err => {
-        console.error(`[ALERT] Error enviando email a ${email}:`, err);
-      })
-  );
-
-  await Promise.allSettled(sendPromises);
+  try {
+    await sendMail({ to: creadorEmail, subject, html, text });
+    console.log(`[ALERT] ✓ Email enviado al creador: ${creadorEmail}`);
+  } catch (err) {
+    console.error(`[ALERT] Error enviando email a ${creadorEmail}:`, err);
+  }
 }
 
 /**
@@ -272,7 +262,7 @@ export async function checkAndSendAlert(
   timestamp: Date
 ): Promise<void> {
   try {
-    // 1. Obtener información del sensor
+    // 1. Obtener información del sensor incluyendo datos del creador
     const sensor = await prisma.sensor.findUnique({
       where: { sensor_id: sensorId },
       select: {
@@ -284,6 +274,14 @@ export async function checkAndSendAlert(
         unidadMedida: {
           select: {
             simbolo: true,
+          },
+        },
+        creador: {
+          select: {
+            email: true,
+            nombre: true,
+            apellido: true,
+            activo: true,
           },
         },
         proyectos: {
@@ -309,6 +307,12 @@ export async function checkAndSendAlert(
       return;
     }
 
+    // Verificar que el creador esté activo
+    if (!sensor.creador.activo) {
+      console.warn(`[ALERT] El creador del sensor "${sensor.nombre}" está inactivo. No se envía alerta.`);
+      return;
+    }
+
     // 2. Verificar si el valor está fuera de rango
     const outOfRange = isOutOfRange(valor, sensor.valor_min, sensor.valor_max);
     
@@ -317,7 +321,7 @@ export async function checkAndSendAlert(
       return;
     }
 
-    // 3. Verificar cooldown y registrar alerta de forma atómica
+    // 3. Verificar cooldown
     const recentAlert = await getRecentAlert(sensorId);
     
     if (recentAlert) {
@@ -340,7 +344,7 @@ export async function checkAndSendAlert(
       `[ALERT] ⚠️  Sensor "${sensor.nombre}" fuera de rango: ${valor} (esperado: ${sensor.valor_min}-${sensor.valor_max})`
     );
 
-    // 5. Preparar contexto y enviar alertas
+    // 5. Preparar contexto y enviar alerta al creador
     const proyectos = sensor.proyectos.map(ps => ({
       id: ps.proyecto.project_id,
       nombre: ps.proyecto.nombre,
@@ -355,9 +359,11 @@ export async function checkAndSendAlert(
       timestamp,
       unidadSimbolo: sensor.unidadMedida?.simbolo || '',
       proyectos,
+      creadorEmail: sensor.creador.email,
+      creadorNombre: `${sensor.creador.nombre} ${sensor.creador.apellido}`,
     };
 
-    await sendAlertEmails(context);
+    await sendAlertEmail(context);
 
     console.log(`[ALERT] ✓ Proceso de alerta completado para sensor "${sensor.nombre}"`);
   } catch (error) {
