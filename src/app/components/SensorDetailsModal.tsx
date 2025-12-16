@@ -332,7 +332,7 @@ export default function SensorDetailsModal({
                   <span className={`transform transition-transform ${showProjects ? 'rotate-90' : ''}`}>
                     ▶
                   </span>
-                  <span>Proyectos{projects.length > 0 ? ` (${projects.length})` : ''}</span>
+                  <span>Proyectos</span>
                 </button>
 
                 {showProjects && (
