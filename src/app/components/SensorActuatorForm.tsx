@@ -22,6 +22,7 @@ type Props = {
   editingId?: number;
   onCancel?: () => void;
   onSubmit?: (values: SensorActuatorFormValues) => void;
+  onSuccess?: () => Promise<void>;  // callback para actualizar después de crear
   asModal?: boolean;
   open?: boolean;
   onRequestClose?: () => void;
@@ -76,6 +77,7 @@ export default function SensorActuatorForm({
   editingId,
   onCancel,
   onSubmit,
+  onSuccess,
   asModal = false,
   open = true,
   onRequestClose,
@@ -324,15 +326,17 @@ export default function SensorActuatorForm({
     setConflictData(null);
   };
 
-  const handleSuccessClose = () => {
+  const handleSuccessClose = async () => {
     setShowSuccessModal(false);
     setSuccessData(null);
-    // Llamar a onSubmit para actualizar la lista en el dashboard
-    if (onSubmit) {
-      // No necesitamos pasar valores porque ya se creó el elemento
-      // Solo queremos que el dashboard refresque
-      (onRequestClose ?? onCancel)?.();
+
+    // Llamar al callback de éxito si existe (para refrescar la lista)
+    if (onSuccess) {
+      await onSuccess();
     }
+
+    // Cerrar el modal del formulario
+    (onRequestClose ?? onCancel)?.();
   };
 
   // Cargar unidades disponibles

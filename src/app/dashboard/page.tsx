@@ -119,7 +119,7 @@ export default function DashboardPage() {
       loadActuadores(true);
     }
   }, [role, loadProjects, loadSensores, loadActuadores]); // â† Ahora incluye las dependencias
-            
+
 
   // ----------------- Crear / Editar Sensor -----------------
   const openNewSensor = () => {
@@ -470,6 +470,12 @@ export default function DashboardPage() {
           editingId={editingSensorId ? Number(editingSensorId) : undefined}
           onCancel={() => { setOpenSensor(false); setEditingSensorId(null); setSensorInitial(undefined); }}
           onSubmit={submitSensor}
+          onSuccess={async () => {
+            await loadSensores(role === 'admin');
+            setOpenSensor(false);
+            setEditingSensorId(null);
+            setSensorInitial(undefined);
+          }}
         />
 
         {/* MODAL: Actuador */}
@@ -482,6 +488,12 @@ export default function DashboardPage() {
           editingId={editingActuatorId ? Number(editingActuatorId) : undefined}
           onCancel={() => { setOpenActuador(false); setEditingActuatorId(null); setActuatorInitial(undefined); }}
           onSubmit={submitActuador}
+          onSuccess={async () => {
+            await loadActuadores(role === 'admin');
+            setOpenActuador(false);
+            setEditingActuatorId(null);
+            setActuatorInitial(undefined);
+          }}
         />
 
         {/* MODAL: Proyecto */}
