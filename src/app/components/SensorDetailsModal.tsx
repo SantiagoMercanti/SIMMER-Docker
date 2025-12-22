@@ -6,13 +6,11 @@ import { useEffect, useMemo, useState } from 'react';
 type Role = 'operator' | 'labManager' | 'admin';
 
 type ApiSensorAnyCase = {
-  id?: number;  // ← API devuelve "id" directamente
+  id?: number;
   sensor_id?: number;
   sensorId?: number;
   nombre: string;
   descripcion?: string | null;
-
-  // unidad como objeto (nuevo)
   unidadMedida?: {
     id: number;
     nombre: string;
@@ -26,8 +24,6 @@ type ApiSensorAnyCase = {
   valorMax?: number;
   valor_min?: number;
   valorMin?: number;
-
-  // estado
   estado?: boolean;
 
   // fuente
@@ -42,7 +38,7 @@ type ApiSensorAnyCase = {
   updated_at?: string;
   updated?: string;
 
-  // ✅ Información del creador
+  // Información del creador
   creador?: {
     email: string;
     nombreCompleto: string;
@@ -53,8 +49,8 @@ type SensorDetail = {
   id: number;
   nombre: string;
   descripcion?: string | null;
-  unidad: string;  // Guardaremos el símbolo para mostrar
-  unidadNombre?: string;  // Opcional: nombre completo
+  unidad: string;
+  unidadNombre?: string;
   valorMax: number | null;
   valorMin: number | null;
   estado: boolean;
@@ -72,6 +68,14 @@ type ProjectInfo = {
   nombre: string;
 };
 
+type LatestMeasurement = {
+  id: number;
+  valor: number;
+  timestamp: string;
+  proyectoId: number;
+  proyectoNombre: string;
+} | null;
+
 type Props = {
   open: boolean;
   sensorId: string | null;
@@ -79,7 +83,7 @@ type Props = {
   onGoProjects?: (sensorId: number) => void;
   onGoLogs?: (sensorId: number) => void;
   onOpenProject?: (projectId: number) => void;
-  onOpenMeasurements?: (sensorId: number) => void; // Nueva prop
+  onOpenMeasurements?: (sensorId: number) => void;
 };
 
 const BASE = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
@@ -123,9 +127,8 @@ export default function SensorDetailsModal({
   open,
   sensorId,
   onClose,
-  // onGoLogs,
   onOpenProject,
-  onOpenMeasurements, // Nueva prop
+  onOpenMeasurements,
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState<SensorDetail | null>(null);
@@ -137,7 +140,11 @@ export default function SensorDetailsModal({
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [showProjects, setShowProjects] = useState(false);
 
-  // Traer el rol real desde el server (DB) usando tu endpoint /api/me
+  // Estado para la última medición
+  const [latestMeasurement, setLatestMeasurement] = useState<LatestMeasurement>(null);
+  const [loadingLatest, setLoadingLatest] = useState(false);
+
+  // Traer el rol real desde el server
   useEffect(() => {
     if (!open) return; // solo cuando el modal se abre
     let abort = false;
@@ -169,6 +176,7 @@ export default function SensorDetailsModal({
     if (!open || !sensorId) {
       setDetail(null);
       setLocalEstado(null);
+      setLatestMeasurement(null);
       return;
     }
     let abort = false;
@@ -190,6 +198,52 @@ export default function SensorDetailsModal({
       }
     })();
     return () => { abort = true; };
+  }, [open, sensorId]);
+
+  // Cargar última medición
+  useEffect(() => {
+    if (!open || !sensorId) {
+      setLatestMeasurement(null);
+      return;
+    }
+    let abort = false;
+    (async () => {
+      try {
+        setLoadingLatest(true);
+        const res = await fetch(api(`/api/sensors/${sensorId}/latest`), { cache: 'no-store' });
+        if (!res.ok) throw new Error('No se pudo obtener la última medición');
+        const data = await res.json();
+        if (!abort) {
+          setLatestMeasurement(data.latestMeasurement ?? null);
+        }
+      } catch (e) {
+        console.error(e);
+        if (!abort) {
+          setLatestMeasurement(null);
+        }
+      } finally {
+        if (!abort) setLoadingLatest(false);
+      }
+    })();
+    return () => { abort = true; };
+  }, [open, sensorId]);
+
+  // Polling cada 15 segundos para actualizar la última medición
+  useEffect(() => {
+    if (!open || !sensorId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(api(`/api/sensors/${sensorId}/latest`), { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        setLatestMeasurement(data.latestMeasurement ?? null);
+      } catch (e) {
+        console.error('Error actualizando última medición:', e);
+      }
+    }, 15000); // Actualizar cada 15 segundos
+
+    return () => clearInterval(interval);
   }, [open, sensorId]);
 
   // Cargar proyectos cuando se expande la sección
@@ -219,12 +273,17 @@ export default function SensorDetailsModal({
     return () => { abort = true; };
   }, [showProjects, sensorId]);
 
+  // Valor actual con última medición real
   const valorActualConUnidad = useMemo(() => {
-    if (!detail) return '';
-    // hardcode 20 con unidad
+    if (!detail) return '—';
+    
+    if (loadingLatest) return 'Cargando...';
+    
+    if (!latestMeasurement) return 'Sin mediciones';
+    
     const u = detail.unidad ? ` ${detail.unidad}` : '';
-    return `20${u}`;
-  }, [detail]);
+    return `${latestMeasurement.valor}${u}`;
+  }, [detail, latestMeasurement, loadingLatest]);
 
   const rangoEstable = useMemo(() => {
     if (!detail) return '—';
@@ -248,6 +307,12 @@ export default function SensorDetailsModal({
     const d = new Date(detail.updatedAt);
     return isNaN(d.getTime()) ? '—' : d.toLocaleString();
   }, [detail]);
+
+  const latestTimestampStr = useMemo(() => {
+    if (!latestMeasurement) return '';
+    const d = new Date(latestMeasurement.timestamp);
+    return isNaN(d.getTime()) ? '' : d.toLocaleString();
+  }, [latestMeasurement]);
 
   if (!open) return null;
 
@@ -280,9 +345,18 @@ export default function SensorDetailsModal({
                 <p className="text-gray-800">{detail.descripcion?.trim() || '—'}</p>
               </div>
 
+              {/* Valor actual con última medición real */}
               <div>
                 <p className="text-xs font-medium text-gray-500">Valor actual</p>
                 <p className="text-gray-800">{valorActualConUnidad}</p>
+                {latestMeasurement && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Última medición: {latestTimestampStr}
+                    {latestMeasurement.proyectoNombre && (
+                      <span> (Proyecto: {latestMeasurement.proyectoNombre})</span>
+                    )}
+                  </p>
+                )}
               </div>
 
               <div>
