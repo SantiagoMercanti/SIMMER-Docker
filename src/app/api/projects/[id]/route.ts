@@ -105,13 +105,17 @@ export async function GET(
     unidadNombre: x.actuador.unidadMedida?.nombre,
   }));
 
+  const sensorIds = sensors.map(s => s.id);
+  const actuatorIds = actuators.map(a => a.id);
+
   return NextResponse.json({
     project_id: p.project_id,
     nombre: p.nombre,
     descripcion: p.descripcion ?? '',
     sensors,
     actuators,
-    // ✅ Incluir información del creador en la respuesta
+    sensorIds,
+    actuatorIds,
     creador: p.creador ? {
       email: p.creador.email,
       nombreCompleto: `${p.creador.nombre} ${p.creador.apellido}`.trim(),
@@ -199,29 +203,29 @@ export async function PATCH(
     // Verificar ownership de sensores y actuadores
     if (sensorIds && sensorIds.length) {
       const ownershipFilter = getOwnershipFilter(acting.id, acting.role);
-      const countSens = await prisma.sensor.count({ 
-        where: { 
+      const countSens = await prisma.sensor.count({
+        where: {
           sensor_id: { in: sensorIds },
           ...ownershipFilter,
-        } 
+        }
       });
       if (countSens !== sensorIds.length) {
-        return NextResponse.json({ 
-          error: 'Uno o más sensores no existen o no te pertenecen.' 
+        return NextResponse.json({
+          error: 'Uno o más sensores no existen o no te pertenecen.'
         }, { status: 400 });
       }
     }
     if (actuatorIds && actuatorIds.length) {
       const ownershipFilter = getOwnershipFilter(acting.id, acting.role);
-      const countActs = await prisma.actuador.count({ 
-        where: { 
+      const countActs = await prisma.actuador.count({
+        where: {
           actuator_id: { in: actuatorIds },
           ...ownershipFilter,
-        } 
+        }
       });
       if (countActs !== actuatorIds.length) {
-        return NextResponse.json({ 
-          error: 'Uno o más actuadores no existen o no te pertenecen.' 
+        return NextResponse.json({
+          error: 'Uno o más actuadores no existen o no te pertenecen.'
         }, { status: 400 });
       }
     }
