@@ -257,6 +257,7 @@ async function handleSensorMessage(topic: string, message: SensorMessage) {
 
 /**
  * Re-suscribe a los tópicos de sensores activos.
+ * Útil cuando se crean, activan o desactivan sensores.
  */
 export async function refreshMqttSubscriptions() {
   if (!mqttClient || !mqttClient.connected) {
@@ -268,11 +269,22 @@ export async function refreshMqttSubscriptions() {
 
   // Desuscribirse de todos los tópicos actuales
   const currentTopics = Object.keys(mqttClient['_resubscribeTopics'] || {});
-  currentTopics.forEach(topic => {
-    mqttClient!.unsubscribe(topic);
-  });
+  
+  if (currentTopics.length > 0) {
+    console.log(`[MQTT] Desuscribiendo de ${currentTopics.length} tópico(s) actual(es)...`);
+    currentTopics.forEach(topic => {
+      mqttClient!.unsubscribe(topic, (err) => {
+        if (err) {
+          console.error(`[MQTT] Error desuscribiendo de "${topic}":`, err);
+        }
+      });
+    });
+  }
 
+  // Re-suscribirse a los sensores activos actuales
   await subscribeToActiveSensors();
+  
+  console.log('[MQTT] ✓ Suscripciones refrescadas exitosamente');
 }
 
 /**

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { requireCanMutate, getCurrentUser, canAccessResource, canModifyResource } from '@/lib/auth';
+import { refreshMqttSubscriptions } from '@/lib/mqtt-service';
 
 function toIntId(id: string) {
   const n = Number(id);
@@ -175,6 +176,9 @@ export async function PATCH(
     if (valorMax !== undefined) data.valor_max = valorMax;
     if (fuenteDatos !== undefined) data.fuente_datos = fuenteDatos;
 
+    // ✅ Variable para saber si necesitamos refrescar suscripciones MQTT
+    let needsMqttRefresh = false;
+
     // Reactivación (solo admin)
     if (body?.activo !== undefined) {
       if (body.activo === true) {
@@ -182,6 +186,7 @@ export async function PATCH(
           return NextResponse.json({ error: 'Solo admin puede reactivar sensores' }, { status: 403 });
         }
         data.activo = true;
+        needsMqttRefresh = true; // ✅ Reactivar = necesita suscripción
       } else if (body.activo === false) {
         return NextResponse.json({ error: 'Para desactivar use DELETE /api/sensors/:id' }, { status: 400 });
       } else {
@@ -197,6 +202,16 @@ export async function PATCH(
       where: { sensor_id: intId },
       data,
     });
+
+    // ✅ NUEVO: Refrescar suscripciones si el sensor fue reactivado
+    if (needsMqttRefresh) {
+      try {
+        await refreshMqttSubscriptions();
+        console.log(`[API] ✓ Suscripción MQTT actualizada para sensor reactivado: ${updated.fuente_datos}`);
+      } catch (mqttError) {
+        console.error('[API] ⚠️ Error al refrescar suscripciones MQTT:', mqttError);
+      }
+    }
 
     return NextResponse.json(updated);
   } catch (err: unknown) {
@@ -244,6 +259,15 @@ export async function DELETE(
       where: { sensor_id: intId },
       data: { activo: false },
     });
+
+    // ✅ NUEVO: Refrescar suscripciones al desactivar (desuscribirse del tópico)
+    try {
+      await refreshMqttSubscriptions();
+      console.log(`[API] ✓ Suscripciones MQTT actualizadas tras desactivar sensor ${intId}`);
+    } catch (mqttError) {
+      console.error('[API] ⚠️ Error al refrescar suscripciones MQTT:', mqttError);
+    }
+
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const status = (err as { status?: number })?.status ?? 0;

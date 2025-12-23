@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireCanMutate, getCurrentUser, getOwnershipFilter } from '@/lib/auth';
+import { refreshMqttSubscriptions } from '@/lib/mqtt-service';
 
 // Función para normalizar el nombre (sin tildes, minúsculas, sin espacios)
 function normalizeForTopic(text: string): string {
@@ -98,6 +99,16 @@ export async function POST(req: Request) {
       where: { sensor_id: created.sensor_id },
       data: { fuente_datos: topico },
     });
+
+    // ✅ NUEVO: Refrescar suscripciones MQTT para incluir el nuevo sensor
+    try {
+      await refreshMqttSubscriptions();
+      console.log(`[API] ✓ Suscripción MQTT actualizada para nuevo sensor: ${topico}`);
+    } catch (mqttError) {
+      // No fallar la creación del sensor si falla la suscripción MQTT
+      // El sensor quedará registrado y se suscribirá en el próximo reinicio
+      console.error('[API] ⚠️ Error al refrescar suscripciones MQTT:', mqttError);
+    }
 
     return NextResponse.json({ 
       id: String(created.sensor_id), 
