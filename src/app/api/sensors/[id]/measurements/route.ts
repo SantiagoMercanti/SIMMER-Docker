@@ -40,12 +40,7 @@ export async function GET(
         sensor_id: true,
         nombre: true,
         activo: true,
-        creadorId: true,  // Incluir para verificar ownership
-        unidadMedida: {
-          select: {
-            simbolo: true,
-          },
-        },
+        creadorId: true,
       },
     });
 
@@ -95,7 +90,7 @@ export async function GET(
     // Construir el filtro del ProyectoSensor
     let proyectoSensorWhere: Prisma.ProyectoSensorWhereInput = {
       sensorId,
-      proyecto: { 
+      proyecto: {
         activo: true,
         // Filtrar proyectos por ownership (admin ve todos)
         ...(user.role !== 'admin' ? { creadorId: user.id } : {}),
@@ -151,6 +146,7 @@ export async function GET(
         id: true,
         valor: true,
         timestamp: true,
+        unidadSimbolo: true,
         proyectoSensor: {
           select: {
             proyecto: {
@@ -173,7 +169,7 @@ export async function GET(
       timestamp: m.timestamp.toISOString(),
       proyectoNombre: m.proyectoSensor.proyecto.nombre,
       proyectoId: m.proyectoSensor.proyecto.project_id,
-      unidadSimbolo: sensor.unidadMedida?.simbolo ?? '',
+      unidadSimbolo: m.unidadSimbolo || '',
     }));
 
     return NextResponse.json({

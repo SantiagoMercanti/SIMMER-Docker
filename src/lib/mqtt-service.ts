@@ -10,6 +10,7 @@ let connectionPromise: Promise<void> | null = null;
 interface SensorMessage {
   valor: number;
   timestamp?: string;
+  unidad?: string;
 }
 
 /**
@@ -174,7 +175,7 @@ async function subscribeToActiveSensors() {
  * Maneja un mensaje MQTT recibido.
  */
 async function handleSensorMessage(topic: string, message: SensorMessage) {
-  const { valor, timestamp } = message;
+  const { valor, timestamp, unidad } = message;
 
   if (typeof valor !== 'number' || isNaN(valor)) {
     console.error(`[MQTT] Valor inválido en mensaje: ${valor}`);
@@ -192,6 +193,11 @@ async function handleSensorMessage(topic: string, message: SensorMessage) {
         nombre: true,
         valor_min: true,
         valor_max: true,
+        unidadMedida: {
+          select: {
+            simbolo: true,
+          },
+        },
       },
     });
 
@@ -233,10 +239,26 @@ async function handleSensorMessage(topic: string, message: SensorMessage) {
         continue;
       }
 
+      // ✅ NUEVO: Determinar qué unidad usar
+      // 1. Si viene en el mensaje, usar esa
+      // 2. Si no, usar la del sensor (como fallback)
+      // 3. Si tampoco tiene, null
+      const unidadAGuardar = unidad || sensor.unidadMedida?.simbolo || null;
+
+      // Log para debugging
+      if (unidad) {
+        console.log(`[MQTT] Medición con unidad específica: "${unidad}"`);
+      } else if (sensor.unidadMedida?.simbolo) {
+        console.log(`[MQTT] Usando unidad por defecto del sensor: "${sensor.unidadMedida.simbolo}"`);
+      } else {
+        console.log(`[MQTT] Medición sin unidad de medida`);
+      }
+
       const mediciones = proyectosSensor.map(ps => ({
         proyectoSensorId: ps.id,
         valor,
         timestamp: medicionTimestamp,
+        unidadSimbolo: unidadAGuardar,  // ✅ NUEVO: Guardar la unidad
       }));
 
       await prisma.medicionSensor.createMany({
@@ -244,7 +266,7 @@ async function handleSensorMessage(topic: string, message: SensorMessage) {
       });
 
       console.log(
-        `[MQTT] ✓ Guardadas ${mediciones.length} medición(es) para sensor "${sensor.nombre}" (valor: ${valor})`
+        `[MQTT] ✓ Guardadas ${mediciones.length} medición(es) para sensor "${sensor.nombre}" (valor: ${valor}${unidadAGuardar ? ` ${unidadAGuardar}` : ''})`
       );
 
       await checkAndSendAlert(sensor.sensor_id, valor, medicionTimestamp);

@@ -203,6 +203,8 @@ model MedicionSensor {
   valor     Float
   timestamp DateTime @default(now())
 
+  unidadSimbolo String? // ej: "°C", "ml", "L", etc.
+
   @@index([proyectoSensorId])
   @@index([timestamp])
 }
