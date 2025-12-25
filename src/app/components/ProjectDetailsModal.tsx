@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type ApiProjectAnyCase = {
   id?: number | string;
@@ -9,7 +9,6 @@ type ApiProjectAnyCase = {
   nombre: string;
   descripcion?: string | null;
 
-  // Para el form (compat)
   sensorIds?: number[];
   actuatorIds?: number[];
 
@@ -28,7 +27,7 @@ type ApiProjectAnyCase = {
     unidadMedida?: string;
     unidadNombre?: string;
   }>;
-  // (fallbacks si en algún momento vienen con otras claves)
+
   sensores?: Array<{ sensor?: { sensor_id: number; nombre: string; unidad_de_medida?: string } }>;
   actuadores?: Array<{ actuador?: { actuator_id: number; nombre: string; unidad_de_medida?: string } }>;
 
@@ -69,6 +68,9 @@ type Props = {
 
 const BASE = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
 const api = (p: string) => `${BASE}${p}`;
+
+// ✅ Intervalo de auto-refresh: 15 segundos
+const AUTO_REFRESH_INTERVAL = 15 * 1000; // 15,000 ms
 
 function normalizeProject(p: ApiProjectAnyCase): ProjectDetail {
   const id = Number(p.id ?? p.project_id ?? 0);
@@ -126,7 +128,7 @@ function normalizeProject(p: ApiProjectAnyCase): ProjectDetail {
   };
 }
 
-// ✅ Función para formatear fecha corta (similar a SensorMeasurementsModal)
+// Función para formatear fecha corta
 function formatShortDate(timestamp: string) {
   const date = new Date(timestamp);
   if (isNaN(date.getTime())) return '—';
@@ -148,29 +150,77 @@ export default function ProjectDetailsModal({
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
+  
+  // ✅ Bandera para evitar múltiples fetches simultáneos
+  const isRefreshingRef = useRef(false);
 
+  // ✅ Función para cargar el proyecto (extraída para reutilizar)
+  const loadProject = useCallback(async () => {
+    if (!projectId) return;
+    
+    // Evitar múltiples fetches simultáneos
+    if (isRefreshingRef.current) {
+      console.log('[ProjectDetails] Ya hay un fetch en curso, omitiendo...');
+      return;
+    }
+
+    let abort = false;
+    isRefreshingRef.current = true;
+
+    try {
+      setLoading(true);
+      const res = await fetch(api(`/api/projects/${projectId}`), { cache: 'no-store' });
+      if (!res.ok) throw new Error('No se pudo obtener el proyecto');
+      const raw = (await res.json()) as ApiProjectAnyCase;
+      const norm = normalizeProject(raw);
+      if (!abort) {
+        setDetail(norm);
+      }
+    } catch (e) {
+      console.error(e);
+      if (!abort) {
+        setDetail(null);
+      }
+    } finally {
+      if (!abort) {
+        setLoading(false);
+        isRefreshingRef.current = false;
+      }
+    }
+
+    return () => {
+      abort = true;
+      isRefreshingRef.current = false;
+    };
+  }, [projectId]);
+
+  // ✅ Effect para cargar el proyecto cuando se abre o cambia el ID
   useEffect(() => {
     if (!open || !projectId) {
       setDetail(null);
       return;
     }
-    let abort = false;
-    (async () => {
-      try {
-        setLoading(true);
-        const res = await fetch(api(`/api/projects/${projectId}`), { cache: 'no-store' });
-        if (!res.ok) throw new Error('No se pudo obtener el proyecto');
-        const raw = (await res.json()) as ApiProjectAnyCase;
-        const norm = normalizeProject(raw);
-        if (!abort) setDetail(norm);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        if (!abort) setLoading(false);
-      }
-    })();
-    return () => { abort = true; };
-  }, [open, projectId]);
+    loadProject();
+  }, [open, projectId, loadProject]);
+
+  // ✅ Effect separado para auto-refresh cada 15 segundos
+  useEffect(() => {
+    if (!open || !projectId) {
+      return;
+    }
+
+    console.log(`[ProjectDetails] Auto-refresh activado (cada ${AUTO_REFRESH_INTERVAL / 1000}s)`);
+
+    const interval = setInterval(() => {
+      console.log('[ProjectDetails] Ejecutando auto-refresh...');
+      loadProject();
+    }, AUTO_REFRESH_INTERVAL);
+
+    return () => {
+      console.log('[ProjectDetails] Auto-refresh desactivado');
+      clearInterval(interval);
+    };
+  }, [open, projectId, loadProject]);
 
   const sensors = useMemo(() => detail?.sensors ?? [], [detail]);
   const actuators = useMemo(() => detail?.actuators ?? [], [detail]);
@@ -182,19 +232,42 @@ export default function ProjectDetailsModal({
       <div className="w-full max-w-2xl rounded-xl bg-white shadow-lg">
         <div className="flex items-center justify-between border-b px-5 py-4">
           <h3 className="text-lg font-semibold text-gray-800">Detalle del Proyecto</h3>
-          <button
-            onClick={onClose}
-            className="rounded-md p-2 text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            aria-label="Cerrar modal"
-          >
-            ✕
-          </button>
+          <div className="flex items-center gap-2">
+            {/* ✅ Botón de refresh manual */}
+            <button
+              onClick={loadProject}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Actualizar ahora"
+            >
+              <svg 
+                className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              {loading ? 'Actualizando...' : 'Actualizar'}
+            </button>
+            <button
+              onClick={onClose}
+              className="rounded-md p-2 text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              aria-label="Cerrar modal"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         <div className="px-5 py-4 max-h-[70vh] overflow-y-auto">
-          {loading && <p className="text-sm text-gray-500">Cargando...</p>}
+          {loading && !detail && <p className="text-sm text-gray-500">Cargando...</p>}
 
-          {!loading && detail && (
+          {!loading && !detail && (
+            <p className="text-sm text-red-600">No se pudo cargar el proyecto.</p>
+          )}
+
+          {detail && (
             <div className="space-y-4">
               {/* Nombre */}
               <div>
@@ -220,7 +293,7 @@ export default function ProjectDetailsModal({
                 </div>
               )}
 
-              {/* ✅ Sensores con última medición */}
+              {/* Sensores con última medición */}
               <div>
                 <p className="text-xs font-medium text-gray-500 mb-2">Sensores</p>
                 {sensors.length === 0 ? (
