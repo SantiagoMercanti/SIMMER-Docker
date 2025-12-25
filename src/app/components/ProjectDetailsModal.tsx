@@ -17,8 +17,10 @@ type ApiProjectAnyCase = {
   sensors?: Array<{
     id: number;
     nombre: string;
-    unidadMedida?: string;  // ← símbolo de la unidad
-    unidadNombre?: string;  // ← nombre completo (opcional)
+    unidadMedida?: string;
+    unidadNombre?: string;
+    ultimoValor?: number | null;
+    ultimaFecha?: string | null;
   }>;
   actuators?: Array<{
     id: number;
@@ -41,7 +43,13 @@ type ProjectDetail = {
   id: number;
   nombre: string;
   descripcion: string;
-  sensors: Array<{ id: number; nombre: string; unidad: string }>;
+  sensors: Array<{ 
+    id: number; 
+    nombre: string; 
+    unidad: string;
+    ultimoValor: number | null;
+    ultimaFecha: string | null;
+  }>;
   actuators: Array<{ id: number; nombre: string; unidad: string }>;
   creador?: {
     email: string;
@@ -67,13 +75,14 @@ function normalizeProject(p: ApiProjectAnyCase): ProjectDetail {
   const nombre = p.nombre;
   const descripcion = p.descripcion ?? '';
 
-  // Preferimos "sensors"/"actuators" tal como los devuelve el GET actualizado
-  let sensors: Array<{ id: number; nombre: string; unidad: string }> = [];
+  let sensors: Array<{ id: number; nombre: string; unidad: string; ultimoValor: number | null; ultimaFecha: string | null }> = [];
   if (Array.isArray(p.sensors)) {
     sensors = p.sensors.map(s => ({
       id: s.id,
       nombre: s.nombre,
       unidad: s.unidadMedida ?? '',
+      ultimoValor: s.ultimoValor ?? null,
+      ultimaFecha: s.ultimaFecha ?? null,
     }));
   } else if (Array.isArray(p.sensores)) {
     // Fallback si solo viniera el include crudo
@@ -84,6 +93,8 @@ function normalizeProject(p: ApiProjectAnyCase): ProjectDetail {
         id: s!.sensor_id,
         nombre: s!.nombre,
         unidad: s!.unidad_de_medida ?? '',
+        ultimoValor: null,
+        ultimaFecha: null,
       }));
   }
 
@@ -113,6 +124,19 @@ function normalizeProject(p: ApiProjectAnyCase): ProjectDetail {
     actuators,
     creador: p.creador ?? null,
   };
+}
+
+// ✅ Función para formatear fecha corta (similar a SensorMeasurementsModal)
+function formatShortDate(timestamp: string) {
+  const date = new Date(timestamp);
+  if (isNaN(date.getTime())) return '—';
+  
+  return date.toLocaleString('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 }
 
 export default function ProjectDetailsModal({
@@ -172,19 +196,19 @@ export default function ProjectDetailsModal({
 
           {!loading && detail && (
             <div className="space-y-4">
-              {/* 1) Nombre */}
+              {/* Nombre */}
               <div>
                 <p className="text-xs font-medium text-gray-500">Nombre</p>
                 <p className="text-gray-800">{detail.nombre}</p>
               </div>
 
-              {/* 2) Descripción */}
+              {/* Descripción */}
               <div>
                 <p className="text-xs font-medium text-gray-500">Descripción</p>
                 <p className="text-gray-800">{detail.descripcion?.trim() || '—'}</p>
               </div>
 
-              {/* ✅ Creado por */}
+              {/* Creado por */}
               {detail.creador && (
                 <div>
                   <p className="text-xs font-medium text-gray-500">Usuario</p>
@@ -196,35 +220,47 @@ export default function ProjectDetailsModal({
                 </div>
               )}
 
-              {/* 3) Sensores */}
+              {/* ✅ Sensores con última medición */}
               <div>
-                <p className="text-xs font-medium text-gray-500 mb-1">Sensores</p>
+                <p className="text-xs font-medium text-gray-500 mb-2">Sensores</p>
                 {sensors.length === 0 ? (
                   <p className="text-gray-600">No hay sensores asociados.</p>
                 ) : (
-                  <ul className="space-y-1">
+                  <ul className="space-y-2">
                     {sensors.map((s) => (
-                      <li key={s.id} className="flex items-center gap-2">
+                      <li key={s.id} className="flex items-center justify-between gap-3 bg-gray-50 p-3 rounded-lg hover:bg-gray-100 transition-colors">
                         <button
                           type="button"
                           onClick={() => onOpenSensor?.(s.id)}
-                          className="text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
                           title="Ver detalle del sensor"
                         >
                           {s.nombre}
                         </button>
-                        <span className="text-gray-700">·</span>
-                        <span className="text-gray-700">
-                          {/* valor hardcodeado 30 + unidad */}
-                          30{s.unidad ? ` ${s.unidad}` : ''}
-                        </span>
+                        
+                        <div className="text-right">
+                          {s.ultimoValor !== null ? (
+                            <>
+                              <div className="text-base font-semibold text-gray-900 tabular-nums">
+                                {s.ultimoValor.toFixed(2)}{s.unidad ? ` ${s.unidad}` : ''}
+                              </div>
+                              {s.ultimaFecha && (
+                                <div className="text-xs text-gray-500 tabular-nums">
+                                  {formatShortDate(s.ultimaFecha)}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-sm text-gray-500 italic">Sin mediciones</span>
+                          )}
+                        </div>
                       </li>
                     ))}
                   </ul>
                 )}
               </div>
 
-              {/* 4) Actuadores */}
+              {/* Actuadores */}
               <div>
                 <p className="text-xs font-medium text-gray-500 mb-1">Actuadores</p>
                 {actuators.length === 0 ? (

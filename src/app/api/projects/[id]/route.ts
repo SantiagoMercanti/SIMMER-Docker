@@ -25,7 +25,7 @@ export async function GET(
       project_id: true,
       nombre: true,
       descripcion: true,
-      creadorId: true,  // Para verificar ownership
+      creadorId: true,
 
       // ✅ Incluir información del creador
       creador: {
@@ -36,7 +36,7 @@ export async function GET(
         }
       },
 
-      // Solo sensores ACTIVOS vinculados
+      // Obtener sensores con sus últimas mediciones
       sensores: {
         where: { sensor: { is: { activo: true } } },
         select: {
@@ -55,6 +55,15 @@ export async function GET(
               },
             },
           },
+          // ✅ Obtener la última medición de este sensor en este proyecto
+          mediciones: {
+            orderBy: { timestamp: 'desc' },
+            take: 1,
+            select: {
+              valor: true,
+              timestamp: true,
+            }
+          }
         },
       },
 
@@ -91,12 +100,18 @@ export async function GET(
     return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 });
   }
 
-  const sensors = p.sensores.map((x) => ({
-    id: x.sensor.sensor_id,
-    nombre: x.sensor.nombre,
-    unidadMedida: x.sensor.unidadMedida?.simbolo ?? '',
-    unidadNombre: x.sensor.unidadMedida?.nombre,
-  }));
+  // ✅ Formatear sensores con última medición
+  const sensors = p.sensores.map((x) => {
+    const ultimaMedicion = x.mediciones[0];
+    return {
+      id: x.sensor.sensor_id,
+      nombre: x.sensor.nombre,
+      unidadMedida: x.sensor.unidadMedida?.simbolo ?? '',
+      unidadNombre: x.sensor.unidadMedida?.nombre,
+      ultimoValor: ultimaMedicion?.valor ?? null,
+      ultimaFecha: ultimaMedicion?.timestamp ?? null,
+    };
+  });
 
   const actuators = p.actuadores.map((x) => ({
     id: x.actuador.actuator_id,
