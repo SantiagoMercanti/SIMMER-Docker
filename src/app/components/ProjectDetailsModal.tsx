@@ -9,6 +9,7 @@ type ApiProjectAnyCase = {
   nombre: string;
   descripcion?: string | null;
 
+  // Para el form (compat)
   sensorIds?: number[];
   actuatorIds?: number[];
 
@@ -31,7 +32,6 @@ type ApiProjectAnyCase = {
   sensores?: Array<{ sensor?: { sensor_id: number; nombre: string; unidad_de_medida?: string } }>;
   actuadores?: Array<{ actuador?: { actuator_id: number; nombre: string; unidad_de_medida?: string } }>;
 
-  // ✅ Información del creador
   creador?: {
     email: string;
     nombreCompleto: string;
@@ -66,11 +66,41 @@ type Props = {
   onOpenActuator?: (actuatorId: number) => void;
 };
 
+type MeasurementsResponse = {
+  measurements: Array<{
+    id: number;
+    valor: number;
+    timestamp: string;
+    proyectoNombre: string;
+    proyectoId: number;
+    unidadSimbolo: string;
+  }>;
+  sensorNombre: string;
+};
+
+type RecordsResponse = {
+  records: Array<{
+    id: number;
+    valor: number;
+    timestamp: string;
+    proyectoNombre: string;
+    proyectoId: number;
+    unidadSimbolo: string;
+    usuario: {
+      id: string;
+      email: string;
+      nombre: string;
+      apellido: string;
+    } | null;
+  }>;
+  actuadorNombre: string;
+};
+
 const BASE = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
 const api = (p: string) => `${BASE}${p}`;
 
-// ✅ Intervalo de auto-refresh: 15 segundos
-const AUTO_REFRESH_INTERVAL = 15 * 1000; // 15,000 ms
+const AUTO_REFRESH_INTERVAL = 15 * 1000;
+const maxRecords = 200;
 
 function normalizeProject(p: ApiProjectAnyCase): ProjectDetail {
   const id = Number(p.id ?? p.project_id ?? 0);
@@ -87,7 +117,6 @@ function normalizeProject(p: ApiProjectAnyCase): ProjectDetail {
       ultimaFecha: s.ultimaFecha ?? null,
     }));
   } else if (Array.isArray(p.sensores)) {
-    // Fallback si solo viniera el include crudo
     sensors = p.sensores
       .map(s => s.sensor)
       .filter(Boolean)
@@ -128,7 +157,6 @@ function normalizeProject(p: ApiProjectAnyCase): ProjectDetail {
   };
 }
 
-// Función para formatear fecha corta
 function formatShortDate(timestamp: string) {
   const date = new Date(timestamp);
   if (isNaN(date.getTime())) return '—';
@@ -141,6 +169,20 @@ function formatShortDate(timestamp: string) {
   });
 }
 
+function formatDateFull(timestamp: string) {
+  const date = new Date(timestamp);
+  if (isNaN(date.getTime())) return '—';
+  
+  return date.toLocaleString('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+}
+
 export default function ProjectDetailsModal({
   open,
   projectId,
@@ -150,15 +192,13 @@ export default function ProjectDetailsModal({
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
+  const [downloadingCsvs, setDownloadingCsvs] = useState(false);
   
-  // ✅ Bandera para evitar múltiples fetches simultáneos
   const isRefreshingRef = useRef(false);
 
-  // ✅ Función para cargar el proyecto (extraída para reutilizar)
   const loadProject = useCallback(async () => {
     if (!projectId) return;
     
-    // Evitar múltiples fetches simultáneos
     if (isRefreshingRef.current) {
       console.log('[ProjectDetails] Ya hay un fetch en curso, omitiendo...');
       return;
@@ -194,7 +234,6 @@ export default function ProjectDetailsModal({
     };
   }, [projectId]);
 
-  // ✅ Effect para cargar el proyecto cuando se abre o cambia el ID
   useEffect(() => {
     if (!open || !projectId) {
       setDetail(null);
@@ -203,7 +242,6 @@ export default function ProjectDetailsModal({
     loadProject();
   }, [open, projectId, loadProject]);
 
-  // ✅ Effect separado para auto-refresh cada 15 segundos
   useEffect(() => {
     if (!open || !projectId) {
       return;
@@ -222,6 +260,172 @@ export default function ProjectDetailsModal({
     };
   }, [open, projectId, loadProject]);
 
+  const handleDownloadAllCSVs = async () => {
+    if (!detail || (!detail.sensors.length && !detail.actuators.length)) {
+      alert('No hay sensores ni actuadores para descargar');
+      return;
+    }
+
+    setDownloadingCsvs(true);
+
+    try {
+      const downloadPromises: Promise<void>[] = [];
+
+      // Descargar CSVs de sensores
+      for (const sensor of detail.sensors) {
+        const promise = (async () => {
+          try {
+            const params = new URLSearchParams({
+              page: '1',
+              pageSize: String(maxRecords),
+              sortBy: 'timestamp',
+              sortDirection: 'desc',
+            });
+
+            if (projectId) {
+              params.append('projectId', projectId);
+            }
+
+            const url = api(`/api/sensors/${sensor.id}/measurements?${params}`);
+            const res = await fetch(url, { cache: 'no-store' });
+
+            if (!res.ok) {
+              throw new Error(`Error al descargar mediciones del sensor ${sensor.nombre}`);
+            }
+
+            const json = (await res.json()) as MeasurementsResponse;
+
+            if (json.measurements.length === 0) {
+              console.log(`Sin mediciones para sensor: ${sensor.nombre}`);
+              return;
+            }
+
+            const headers = ['#', 'Valor', 'Unidad', 'Proyecto', 'Fecha y Hora'];
+            const rows = json.measurements.map((m, idx) => [
+              String(idx + 1),
+              String(m.valor),
+              m.unidadSimbolo,
+              m.proyectoNombre,
+              formatDateFull(m.timestamp)
+            ]);
+
+            const csvContent = [
+              headers.join(','),
+              ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+            ].join('\n');
+
+            const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const downloadUrl = URL.createObjectURL(blob);
+
+            link.setAttribute('href', downloadUrl);
+            link.setAttribute(
+              'download', 
+              `${detail.nombre}_sensor_${json.sensorNombre}_${new Date().toISOString().split('T')[0]}.csv`
+            );
+            link.style.visibility = 'hidden';
+
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(downloadUrl);
+
+            // Pequeño delay entre descargas para evitar problemas del navegador
+            await new Promise(resolve => setTimeout(resolve, 300));
+          } catch (e) {
+            console.error(`Error al descargar CSV del sensor ${sensor.nombre}:`, e);
+          }
+        })();
+
+        downloadPromises.push(promise);
+      }
+
+      // Descargar CSVs de actuadores
+      for (const actuator of detail.actuators) {
+        const promise = (async () => {
+          try {
+            const params = new URLSearchParams({
+              page: '1',
+              pageSize: String(maxRecords),
+              sortBy: 'timestamp',
+              sortDirection: 'desc',
+            });
+
+            if (projectId) {
+              params.append('projectId', projectId);
+            }
+
+            const url = api(`/api/actuators/${actuator.id}/records?${params}`);
+            const res = await fetch(url, { cache: 'no-store' });
+
+            if (!res.ok) {
+              throw new Error(`Error al descargar registros del actuador ${actuator.nombre}`);
+            }
+
+            const json = (await res.json()) as RecordsResponse;
+
+            if (json.records.length === 0) {
+              console.log(`Sin registros para actuador: ${actuator.nombre}`);
+              return;
+            }
+
+            const headers = ['#', 'Valor', 'Unidad', 'Proyecto', 'Usuario', 'Fecha y Hora'];
+            const rows = json.records.map((r, idx) => [
+              String(idx + 1),
+              String(r.valor),
+              r.unidadSimbolo,
+              r.proyectoNombre,
+              r.usuario ? r.usuario.email : 'Sin usuario',
+              formatDateFull(r.timestamp),
+            ]);
+
+            const csvContent = [
+              headers.join(','),
+              ...rows.map((row) => row.map((cell) => `"${cell}"`).join(',')),
+            ].join('\n');
+
+            const blob = new Blob(['\ufeff' + csvContent], {
+              type: 'text/csv;charset=utf-8;',
+            });
+            const link = document.createElement('a');
+            const downloadUrl = URL.createObjectURL(blob);
+
+            link.setAttribute('href', downloadUrl);
+            link.setAttribute(
+              'download',
+              `${detail.nombre}_actuador_${json.actuadorNombre}_${new Date()
+                .toISOString()
+                .split('T')[0]}.csv`
+            );
+            link.style.visibility = 'hidden';
+
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(downloadUrl);
+
+            // Pequeño delay entre descargas
+            await new Promise(resolve => setTimeout(resolve, 300));
+          } catch (e) {
+            console.error(`Error al descargar CSV del actuador ${actuator.nombre}:`, e);
+          }
+        })();
+
+        downloadPromises.push(promise);
+      }
+
+      // Esperar a que todas las descargas terminen
+      await Promise.all(downloadPromises);
+
+      console.log('Todas las descargas completadas');
+    } catch (e) {
+      console.error('Error general al descargar CSVs:', e);
+      alert('Hubo un error al descargar algunos archivos CSV');
+    } finally {
+      setDownloadingCsvs(false);
+    }
+  };
+
   const sensors = useMemo(() => detail?.sensors ?? [], [detail]);
   const actuators = useMemo(() => detail?.actuators ?? [], [detail]);
 
@@ -233,7 +437,7 @@ export default function ProjectDetailsModal({
         <div className="flex items-center justify-between border-b px-5 py-4">
           <h3 className="text-lg font-semibold text-gray-800">Detalle del Proyecto</h3>
           <div className="flex items-center gap-2">
-            {/* ✅ Botón de refresh manual */}
+            {/* Botón de refresh manual */}
             <button
               onClick={loadProject}
               disabled={loading}
@@ -250,6 +454,32 @@ export default function ProjectDetailsModal({
               </svg>
               {loading ? 'Actualizando...' : 'Actualizar'}
             </button>
+
+            {/* Botón de descargar todos los CSVs */}
+            {detail && (sensors.length > 0 || actuators.length > 0) && (
+              <button
+                onClick={handleDownloadAllCSVs}
+                disabled={downloadingCsvs}
+                className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Descargar todos los CSVs del proyecto"
+              >
+                <svg
+                  className={`w-4 h-4 ${downloadingCsvs ? 'animate-bounce' : ''}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                {downloadingCsvs ? 'Descargando...' : 'Descargar CSVs'}
+              </button>
+            )}
+
             <button
               onClick={onClose}
               className="rounded-md p-2 text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
