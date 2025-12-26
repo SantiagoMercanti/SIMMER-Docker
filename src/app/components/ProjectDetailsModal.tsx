@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import ProjectNotes from './ProjectNotes';
 
 type ApiProjectAnyCase = {
   id?: number | string;
@@ -9,11 +10,9 @@ type ApiProjectAnyCase = {
   nombre: string;
   descripcion?: string | null;
 
-  // Para el form (compat)
   sensorIds?: number[];
   actuatorIds?: number[];
 
-  // Para el modal (actualizado)
   sensors?: Array<{
     id: number;
     nombre: string;
@@ -60,10 +59,10 @@ type Props = {
   open: boolean;
   projectId: string | null;
   onClose: () => void;
-
-  // callbacks para abrir modales de detalle
   onOpenSensor?: (sensorId: number) => void;
   onOpenActuator?: (actuatorId: number) => void;
+  currentUserId?: string;
+  isAdmin?: boolean;
 };
 
 type MeasurementsResponse = {
@@ -189,10 +188,13 @@ export default function ProjectDetailsModal({
   onClose,
   onOpenSensor,
   onOpenActuator,
+  currentUserId,
+  isAdmin = false,
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
   const [downloadingCsvs, setDownloadingCsvs] = useState(false);
+  const [activeTab, setActiveTab] = useState<'info' | 'notes'>('info');
   
   const isRefreshingRef = useRef(false);
 
@@ -237,13 +239,14 @@ export default function ProjectDetailsModal({
   useEffect(() => {
     if (!open || !projectId) {
       setDetail(null);
+      setActiveTab('info');
       return;
     }
     loadProject();
   }, [open, projectId, loadProject]);
 
   useEffect(() => {
-    if (!open || !projectId) {
+    if (!open || !projectId || activeTab !== 'info') {
       return;
     }
 
@@ -258,7 +261,7 @@ export default function ProjectDetailsModal({
       console.log('[ProjectDetails] Auto-refresh desactivado');
       clearInterval(interval);
     };
-  }, [open, projectId, loadProject]);
+  }, [open, projectId, activeTab, loadProject]);
 
   const handleDownloadAllCSVs = async () => {
     if (!detail || (!detail.sensors.length && !detail.actuators.length)) {
@@ -271,7 +274,6 @@ export default function ProjectDetailsModal({
     try {
       const downloadPromises: Promise<void>[] = [];
 
-      // Descargar CSVs de sensores
       for (const sensor of detail.sensors) {
         const promise = (async () => {
           try {
@@ -330,7 +332,6 @@ export default function ProjectDetailsModal({
             document.body.removeChild(link);
             URL.revokeObjectURL(downloadUrl);
 
-            // Pequeño delay entre descargas para evitar problemas del navegador
             await new Promise(resolve => setTimeout(resolve, 300));
           } catch (e) {
             console.error(`Error al descargar CSV del sensor ${sensor.nombre}:`, e);
@@ -340,7 +341,6 @@ export default function ProjectDetailsModal({
         downloadPromises.push(promise);
       }
 
-      // Descargar CSVs de actuadores
       for (const actuator of detail.actuators) {
         const promise = (async () => {
           try {
@@ -404,7 +404,6 @@ export default function ProjectDetailsModal({
             document.body.removeChild(link);
             URL.revokeObjectURL(downloadUrl);
 
-            // Pequeño delay entre descargas
             await new Promise(resolve => setTimeout(resolve, 300));
           } catch (e) {
             console.error(`Error al descargar CSV del actuador ${actuator.nombre}:`, e);
@@ -414,7 +413,6 @@ export default function ProjectDetailsModal({
         downloadPromises.push(promise);
       }
 
-      // Esperar a que todas las descargas terminen
       await Promise.all(downloadPromises);
 
       console.log('Todas las descargas completadas');
@@ -433,51 +431,53 @@ export default function ProjectDetailsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="w-full max-w-2xl rounded-xl bg-white shadow-lg">
-        <div className="flex items-center justify-between border-b px-5 py-4">
+      <div className="w-full max-w-3xl rounded-xl bg-white shadow-lg flex flex-col max-h-[85vh]">
+        <div className="flex items-center justify-between border-b px-5 py-4 flex-shrink-0">
           <h3 className="text-lg font-semibold text-gray-800">Detalle del Proyecto</h3>
           <div className="flex items-center gap-2">
-            {/* Botón de refresh manual */}
-            <button
-              onClick={loadProject}
-              disabled={loading}
-              className="inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Actualizar ahora"
-            >
-              <svg 
-                className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} 
-                fill="none" 
-                viewBox="0 0 24 24" 
-                stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              {loading ? 'Actualizando...' : 'Actualizar'}
-            </button>
-
-            {/* Botón de descargar todos los CSVs */}
-            {detail && (sensors.length > 0 || actuators.length > 0) && (
-              <button
-                onClick={handleDownloadAllCSVs}
-                disabled={downloadingCsvs}
-                className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Descargar todos los CSVs del proyecto"
-              >
-                <svg
-                  className={`w-4 h-4 ${downloadingCsvs ? 'animate-bounce' : ''}`}
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
+            {activeTab === 'info' && (
+              <>
+                <button
+                  onClick={loadProject}
+                  disabled={loading}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Actualizar ahora"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  />
-                </svg>
-                {downloadingCsvs ? 'Descargando...' : 'Descargar CSVs'}
-              </button>
+                  <svg 
+                    className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} 
+                    fill="none" 
+                    viewBox="0 0 24 24" 
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  {loading ? 'Actualizando...' : 'Actualizar'}
+                </button>
+
+                {detail && (sensors.length > 0 || actuators.length > 0) && (
+                  <button
+                    onClick={handleDownloadAllCSVs}
+                    disabled={downloadingCsvs}
+                    className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Descargar todos los CSVs del proyecto"
+                  >
+                    <svg
+                      className={`w-4 h-4 ${downloadingCsvs ? 'animate-bounce' : ''}`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      />
+                    </svg>
+                    {downloadingCsvs ? 'Descargando...' : 'Descargar CSVs'}
+                  </button>
+                )}
+              </>
             )}
 
             <button
@@ -490,106 +490,139 @@ export default function ProjectDetailsModal({
           </div>
         </div>
 
-        <div className="px-5 py-4 max-h-[70vh] overflow-y-auto">
-          {loading && !detail && <p className="text-sm text-gray-500">Cargando...</p>}
+        {/* Pestañas */}
+        <div className="border-b flex-shrink-0">
+          <div className="flex px-5">
+            <button
+              onClick={() => setActiveTab('info')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'info'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              Información
+            </button>
+            <button
+              onClick={() => setActiveTab('notes')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'notes'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              Notas
+            </button>
+          </div>
+        </div>
 
-          {!loading && !detail && (
-            <p className="text-sm text-red-600">No se pudo cargar el proyecto.</p>
-          )}
+        <div className="px-5 py-4 overflow-y-auto flex-1">
+          {activeTab === 'info' && (
+            <>
+              {loading && !detail && <p className="text-sm text-gray-500">Cargando...</p>}
 
-          {detail && (
-            <div className="space-y-4">
-              {/* Nombre */}
-              <div>
-                <p className="text-xs font-medium text-gray-500">Nombre</p>
-                <p className="text-gray-800">{detail.nombre}</p>
-              </div>
-
-              {/* Descripción */}
-              <div>
-                <p className="text-xs font-medium text-gray-500">Descripción</p>
-                <p className="text-gray-800">{detail.descripcion?.trim() || '—'}</p>
-              </div>
-
-              {/* Creado por */}
-              {detail.creador && (
-                <div>
-                  <p className="text-xs font-medium text-gray-500">Usuario</p>
-                  <p className="text-gray-800">
-                    {detail.creador.nombreCompleto}
-                    {' '}
-                    <span className="text-gray-500">({detail.creador.email})</span>
-                  </p>
-                </div>
+              {!loading && !detail && (
+                <p className="text-sm text-red-600">No se pudo cargar el proyecto.</p>
               )}
 
-              {/* Sensores con última medición */}
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-2">Sensores</p>
-                {sensors.length === 0 ? (
-                  <p className="text-gray-600">No hay sensores asociados.</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {sensors.map((s) => (
-                      <li key={s.id} className="flex items-center justify-between gap-3 bg-gray-50 p-3 rounded-lg hover:bg-gray-100 transition-colors">
-                        <button
-                          type="button"
-                          onClick={() => onOpenSensor?.(s.id)}
-                          className="text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
-                          title="Ver detalle del sensor"
-                        >
-                          {s.nombre}
-                        </button>
-                        
-                        <div className="text-right">
-                          {s.ultimoValor !== null ? (
-                            <>
-                              <div className="text-base font-semibold text-gray-900 tabular-nums">
-                                {s.ultimoValor.toFixed(2)}{s.unidad ? ` ${s.unidad}` : ''}
-                              </div>
-                              {s.ultimaFecha && (
-                                <div className="text-xs text-gray-500 tabular-nums">
-                                  {formatShortDate(s.ultimaFecha)}
-                                </div>
-                              )}
-                            </>
-                          ) : (
-                            <span className="text-sm text-gray-500 italic">Sin mediciones</span>
-                          )}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+              {detail && (
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500">Nombre</p>
+                    <p className="text-gray-800">{detail.nombre}</p>
+                  </div>
 
-              {/* Actuadores */}
-              <div>
-                <p className="text-xs font-medium text-gray-500 mb-1">Actuadores</p>
-                {actuators.length === 0 ? (
-                  <p className="text-gray-600">No hay actuadores asociados.</p>
-                ) : (
-                  <ul className="space-y-1">
-                    {actuators.map((a) => (
-                      <li key={a.id}>
-                        <button
-                          type="button"
-                          onClick={() => onOpenActuator?.(a.id)}
-                          className="text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          title="Ver detalle del actuador"
-                        >
-                          {a.nombre}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
+                  <div>
+                    <p className="text-xs font-medium text-gray-500">Descripción</p>
+                    <p className="text-gray-800">{detail.descripcion?.trim() || '—'}</p>
+                  </div>
+
+                  {detail.creador && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500">Usuario</p>
+                      <p className="text-gray-800">
+                        {detail.creador.nombreCompleto}
+                        {' '}
+                        <span className="text-gray-500">({detail.creador.email})</span>
+                      </p>
+                    </div>
+                  )}
+
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-2">Sensores</p>
+                    {sensors.length === 0 ? (
+                      <p className="text-gray-600">No hay sensores asociados.</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {sensors.map((s) => (
+                          <li key={s.id} className="flex items-center justify-between gap-3 bg-gray-50 p-3 rounded-lg hover:bg-gray-100 transition-colors">
+                            <button
+                              type="button"
+                              onClick={() => onOpenSensor?.(s.id)}
+                              className="text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                              title="Ver detalle del sensor"
+                            >
+                              {s.nombre}
+                            </button>
+                            
+                            <div className="text-right">
+                              {s.ultimoValor !== null ? (
+                                <>
+                                  <div className="text-base font-semibold text-gray-900 tabular-nums">
+                                    {s.ultimoValor.toFixed(2)}{s.unidad ? ` ${s.unidad}` : ''}
+                                  </div>
+                                  {s.ultimaFecha && (
+                                    <div className="text-xs text-gray-500 tabular-nums">
+                                      {formatShortDate(s.ultimaFecha)}
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                <span className="text-sm text-gray-500 italic">Sin mediciones</span>
+                              )}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-1">Actuadores</p>
+                    {actuators.length === 0 ? (
+                      <p className="text-gray-600">No hay actuadores asociados.</p>
+                    ) : (
+                      <ul className="space-y-1">
+                        {actuators.map((a) => (
+                          <li key={a.id}>
+                            <button
+                              type="button"
+                              onClick={() => onOpenActuator?.(a.id)}
+                              className="text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              title="Ver detalle del actuador"
+                            >
+                              {a.nombre}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === 'notes' && detail && (
+            <ProjectNotes
+              projectId={detail.id}
+              currentUserId={currentUserId}
+              isAdmin={isAdmin}
+            />
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-3 border-t px-5 py-4">
+        <div className="flex items-center justify-end gap-3 border-t px-5 py-4 flex-shrink-0">
           <button
             type="button"
             onClick={onClose}

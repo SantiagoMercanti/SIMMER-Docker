@@ -46,10 +46,11 @@ model UserMetadata {
   // registros de actuadores que hizo este usuario
   registrosActuador RegistroActuador[]
 
-  // NUEVO: Recursos creados por el usuario
+  // Recursos creados por el usuario
   sensoresCreados   Sensor[]   @relation(name: "SensoresCreados")
   actuadoresCreados Actuador[] @relation(name: "ActuadoresCreados")
   proyectosCreados  Proyecto[] @relation(name: "ProyectosCreados")
+  notasProyecto     NotaProyecto[]
 
   @@unique([email, activo])
   @@index([tipo])
@@ -147,6 +148,7 @@ model Proyecto {
 
   sensores   ProyectoSensor[]
   actuadores ProyectoActuador[]
+  notas      NotaProyecto[]
 
   estado    Boolean  @default(true)
   activo    Boolean  @default(true)
@@ -155,8 +157,27 @@ model Proyecto {
 
   @@index([nombre])
   @@index([activo])
-  @@index([creadorId])  // Índice para filtrar por creador
-}
+  @@index([creadorId])
+  }
+
+model NotaProyecto {
+  id         Int      @id @default(autoincrement())
+  proyectoId Int
+  proyecto   Proyecto @relation(fields: [proyectoId], references: [project_id], onDelete: Cascade, onUpdate: Cascade)
+  
+  contenido  String   @db.Text
+  
+  // Usuario que creó la nota
+  usuarioId  String
+  usuario    UserMetadata @relation(fields: [usuarioId], references: [id])
+  
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  
+  @@index([proyectoId])
+  @@index([usuarioId])
+  @@index([createdAt])
+  }
 
 // --- Tablas pivote (N:M) ---
 // Ahora las pivotes tienen su propio id y son dueñas de mediciones/registros
