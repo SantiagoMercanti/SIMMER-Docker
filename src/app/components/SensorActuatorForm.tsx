@@ -45,15 +45,6 @@ type SuccessData = {
   topico: string;
 };
 
-// Función para normalizar el nombre (sin tildes, minúsculas, sin espacios)
-function normalizeForTopic(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') // Eliminar tildes
-    .replace(/\s+/g, '') // Eliminar espacios
-    .replace(/[^a-z0-9]/g, ''); // Eliminar caracteres especiales
-}
 
 // Categorías válidas del enum
 const CATEGORIAS = [
@@ -888,7 +879,7 @@ export default function SensorActuatorForm({
               ¡{tipo.charAt(0).toUpperCase() + tipo.slice(1)} creado correctamente!
             </h4>
             <p className="text-sm text-gray-700 mb-3">
-              Se creó correctamente el {tipo} <strong>"{successData.name}"</strong>.
+              Se creó correctamente el {tipo} <strong>&quot;{successData.name}&quot;</strong>.
             </p>
           </div>
         </div>

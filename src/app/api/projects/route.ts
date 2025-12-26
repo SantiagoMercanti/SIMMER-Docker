@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireCanMutate, requireAdmin, getCurrentUser, getOwnershipFilter } from '@/lib/auth';
+import { requireCanMutate, getCurrentUser, getOwnershipFilter } from '@/lib/auth';
 
 // -------- GET /api/projects --------
 // Devuelve una lista simplificada para el dashboard: [{ id: string, name: string, activo: boolean }]

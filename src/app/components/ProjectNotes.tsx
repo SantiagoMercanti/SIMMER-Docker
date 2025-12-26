@@ -1,7 +1,7 @@
 // Archivo: src/app/components/ProjectNotes.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 type Nota = {
   id: number;
@@ -45,7 +45,7 @@ export default function ProjectNotes({ projectId, currentUserId, isAdmin }: Prop
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editContent, setEditContent] = useState('');
 
-  const loadNotas = async () => {
+  const loadNotas = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch(api(`/api/projects/${projectId}/notes`), {
@@ -59,11 +59,11 @@ export default function ProjectNotes({ projectId, currentUserId, isAdmin }: Prop
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId]);
 
   useEffect(() => {
     loadNotas();
-  }, [projectId]);
+  }, [loadNotas]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

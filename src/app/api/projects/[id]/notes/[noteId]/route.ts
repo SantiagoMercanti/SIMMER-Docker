@@ -1,7 +1,7 @@
 // Archivo: src/app/api/projects/[id]/notes/[noteId]/route.ts
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentUser, canAccessResource } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 
 // PATCH /api/projects/:id/notes/:noteId - Actualizar una nota
 export async function PATCH(
