@@ -6,6 +6,7 @@ let mqttClient: mqtt.MqttClient | null = null;
 let isInitialized = false;
 let isConnecting = false;
 let connectionPromise: Promise<void> | null = null;
+let heartbeatInterval: NodeJS.Timeout | null = null;
 
 interface SensorMessage {
   valor: number;
@@ -14,14 +15,13 @@ interface SensorMessage {
 }
 
 /**
- * ✅ HANDLER único para mensajes MQTT
- * Se define fuera para evitar recrearlo múltiples veces
+ * HANDLER único para mensajes MQTT
  */
 const messageHandler = async (topic: string, payload: Buffer) => {
   try {
     const message: SensorMessage = JSON.parse(payload.toString());
     console.log(`[MQTT] Mensaje recibido en "${topic}":`, message);
-    
+
     await handleSensorMessage(topic, message);
   } catch (error) {
     console.error(`[MQTT] Error procesando mensaje de "${topic}":`, error);
@@ -29,33 +29,71 @@ const messageHandler = async (topic: string, payload: Buffer) => {
 };
 
 /**
+ * Inicia un heartbeat que verifica la conexión MQTT periódicamente
+ */
+function startHeartbeat() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+  }
+
+  heartbeatInterval = setInterval(async () => {
+    if (!mqttClient) {
+      console.warn('[MQTT Heartbeat] Cliente no existe');
+      return;
+    }
+
+    if (!mqttClient.connected) {
+      console.warn('[MQTT Heartbeat] ⚠️  Cliente desconectado, intentando reconectar...');
+      try {
+        await initMqttService();
+        console.log('[MQTT Heartbeat] ✓ Reconexión exitosa');
+      } catch (error) {
+        console.error('[MQTT Heartbeat] ❌ Error en reconexión:', error);
+      }
+    } else {
+      console.log('[MQTT Heartbeat] ✓ Conexión activa');
+    }
+  }, 30000);
+}
+
+/**
+ * ✅ Detiene el heartbeat
+ */
+function stopHeartbeat() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+}
+
+/**
  * Inicializa el cliente MQTT y se suscribe a los tópicos de sensores activos.
- * Solo se ejecuta una vez en el ciclo de vida del servidor.
  */
 export async function initMqttService(): Promise<void> {
-  // ✅ Si ya está inicializado y conectado, no hacer nada
+  // Si ya está inicializado y conectado, no hacer nada
   if (isInitialized && mqttClient?.connected) {
     console.log('[MQTT] Servicio ya inicializado y conectado');
     return;
   }
 
-  // ✅ Si hay una conexión en proceso, esperar a que termine
+  // Si hay una conexión en proceso, esperar a que termine
   if (isConnecting && connectionPromise) {
     console.log('[MQTT] Esperando conexión en proceso...');
     return connectionPromise;
   }
 
-  // ✅ Si hay un cliente existente pero no conectado, limpiarlo primero
+  // Si hay un cliente existente pero no conectado, limpiarlo primero
   if (mqttClient && !mqttClient.connected) {
     console.log('[MQTT] Cliente existente pero desconectado, limpiando...');
-    mqttClient.removeAllListeners(); // ✅ CRÍTICO: Remover listeners viejos
-    mqttClient.end(true); // Forzar cierre
+    stopHeartbeat();
+    mqttClient.removeAllListeners();
+    mqttClient.end(true);
     mqttClient = null;
     isInitialized = false;
   }
 
   const brokerUrl = process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883';
-  
+
   console.log(`[MQTT] Conectando al broker: ${brokerUrl}`);
   isConnecting = true;
 
@@ -72,20 +110,34 @@ export async function initMqttService(): Promise<void> {
         clean: true,
         reconnectPeriod: 5000,
         connectTimeout: 30000,
+        keepalive: 60,
+        protocolVersion: 4,
+        reschedulePings: true,
+        will: {
+          topic: 'simmer/server/status',
+          payload: Buffer.from('offline'),
+          qos: 1,
+          retain: true
+        }
       });
 
-      // ✅ CRÍTICO: Registrar el handler UNA SOLA VEZ
       mqttClient.on('message', messageHandler);
 
       mqttClient.on('connect', async () => {
         clearTimeout(connectionTimeout);
         console.log('[MQTT] ✓ Conectado al broker');
+        console.log('[MQTT] Cliente ID:', mqttClient?.options.clientId);
         isInitialized = true;
         isConnecting = false;
-        
+
         // Suscribirse a todos los tópicos de sensores activos
         await subscribeToActiveSensors();
+        startHeartbeat();
         resolve();
+      });
+
+      mqttClient.on('disconnect', (packet) => {
+        console.log('[MQTT] ⚠️  Desconexión detectada:', packet);
       });
 
       mqttClient.on('error', (error) => {
@@ -97,19 +149,33 @@ export async function initMqttService(): Promise<void> {
       });
 
       mqttClient.on('offline', () => {
-        console.log('[MQTT] Cliente desconectado');
+        console.log('[MQTT] ⚠️  Cliente fuera de línea');
         isInitialized = false;
+        stopHeartbeat();
       });
 
       mqttClient.on('reconnect', () => {
         console.log('[MQTT] Reconectando...');
       });
 
-      // ✅ NUEVO: Handler para cuando se cierra la conexión
+      // Handler para cuando se cierra la conexión
       mqttClient.on('close', () => {
         console.log('[MQTT] Conexión cerrada');
         isInitialized = false;
         isConnecting = false;
+        stopHeartbeat();
+      });
+
+      mqttClient.on('packetsend', (packet) => {
+        if (packet.cmd === 'pingreq') {
+          console.log('[MQTT] 📡 Enviando ping keepalive');
+        }
+      });
+
+      mqttClient.on('packetreceive', (packet) => {
+        if (packet.cmd === 'pingresp') {
+          console.log('[MQTT] 📡 Ping keepalive recibido');
+        }
       });
 
     } catch (error) {
@@ -239,26 +305,13 @@ async function handleSensorMessage(topic: string, message: SensorMessage) {
         continue;
       }
 
-      // ✅ NUEVO: Determinar qué unidad usar
-      // 1. Si viene en el mensaje, usar esa
-      // 2. Si no, usar la del sensor (como fallback)
-      // 3. Si tampoco tiene, null
       const unidadAGuardar = unidad || sensor.unidadMedida?.simbolo || null;
-
-      // Log para debugging
-      if (unidad) {
-        console.log(`[MQTT] Medición con unidad específica: "${unidad}"`);
-      } else if (sensor.unidadMedida?.simbolo) {
-        console.log(`[MQTT] Usando unidad por defecto del sensor: "${sensor.unidadMedida.simbolo}"`);
-      } else {
-        console.log(`[MQTT] Medición sin unidad de medida`);
-      }
 
       const mediciones = proyectosSensor.map(ps => ({
         proyectoSensorId: ps.id,
         valor,
         timestamp: medicionTimestamp,
-        unidadSimbolo: unidadAGuardar,  // ✅ NUEVO: Guardar la unidad
+        unidadSimbolo: unidadAGuardar,
       }));
 
       await prisma.medicionSensor.createMany({
@@ -278,20 +331,35 @@ async function handleSensorMessage(topic: string, message: SensorMessage) {
 }
 
 /**
- * Re-suscribe a los tópicos de sensores activos.
- * Útil cuando se crean, activan o desactivan sensores.
+ * ✅ Re-suscribe con auto-reconexión
  */
 export async function refreshMqttSubscriptions() {
   if (!mqttClient || !mqttClient.connected) {
-    console.warn('[MQTT] Cliente no conectado, no se pueden refrescar suscripciones');
-    return;
+    console.warn('[MQTT] Cliente no conectado, intentando reconectar...');
+
+    try {
+      await ensureMqttConnection(15000);
+      console.log('[MQTT] ✓ Reconexión exitosa');
+    } catch (error) {
+      console.error('[MQTT] ❌ Error al reconectar:', error);
+      throw new Error('No se pudo reconectar al broker MQTT');
+    }
   }
 
   console.log('[MQTT] Refrescando suscripciones...');
 
   // Desuscribirse de todos los tópicos actuales
-  const currentTopics = Object.keys(mqttClient['_resubscribeTopics'] || {});
-  
+  if (!mqttClient) {
+    throw new Error('Cliente MQTT no disponible después de reconexión');
+  }
+
+  type ResubscribeTopicsHolder = {
+    _resubscribeTopics?: Record<string, unknown>;
+  };
+
+  const holder = mqttClient as unknown as ResubscribeTopicsHolder;
+  const currentTopics = Object.keys(holder._resubscribeTopics ?? {});
+
   if (currentTopics.length > 0) {
     console.log(`[MQTT] Desuscribiendo de ${currentTopics.length} tópico(s) actual(es)...`);
     currentTopics.forEach(topic => {
@@ -305,7 +373,7 @@ export async function refreshMqttSubscriptions() {
 
   // Re-suscribirse a los sensores activos actuales
   await subscribeToActiveSensors();
-  
+
   console.log('[MQTT] ✓ Suscripciones refrescadas exitosamente');
 }
 
@@ -315,7 +383,8 @@ export async function refreshMqttSubscriptions() {
 export function closeMqttConnection() {
   if (mqttClient) {
     console.log('[MQTT] Cerrando conexión...');
-    mqttClient.removeAllListeners(); // ✅ CRÍTICO: Limpiar listeners
+    stopHeartbeat();
+    mqttClient.removeAllListeners();
     mqttClient.end(true);
     mqttClient = null;
     isInitialized = false;
@@ -340,8 +409,9 @@ export function getMqttStatus() {
     isInitialized,
     isConnecting,
     hasClient: mqttClient !== null,
-    // ✅ Contar listeners del evento 'message'
+    // Contar listeners del evento 'message'
     messageListeners: mqttClient ? mqttClient.listenerCount('message') : 0,
+    hasHeartbeat: heartbeatInterval !== null,
   };
 }
 
@@ -359,7 +429,7 @@ export async function ensureMqttConnection(timeoutMs: number = 15000): Promise<v
     try {
       await Promise.race([
         connectionPromise,
-        new Promise((_, reject) => 
+        new Promise((_, reject) =>
           setTimeout(() => reject(new Error('Timeout esperando inicialización MQTT')), timeoutMs)
         )
       ]);
@@ -373,7 +443,7 @@ export async function ensureMqttConnection(timeoutMs: number = 15000): Promise<v
   try {
     await Promise.race([
       initMqttService(),
-      new Promise((_, reject) => 
+      new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Timeout inicializando MQTT')), timeoutMs)
       )
     ]);
@@ -391,9 +461,9 @@ export async function ensureMqttConnection(timeoutMs: number = 15000): Promise<v
  * Publica un mensaje a un tópico MQTT con manejo robusto de errores.
  */
 export async function publishMqttMessage(
-  topic: string, 
+  topic: string,
   message: object,
-  options: { 
+  options: {
     retries?: number;
     retryDelay?: number;
   } = {}
@@ -412,7 +482,7 @@ export async function publishMqttMessage(
 
   // Intentar publicar con reintentos
   let lastError: Error | null = null;
-  
+
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       // Verificar que sigue conectado
@@ -422,7 +492,7 @@ export async function publishMqttMessage(
 
       // Publicar mensaje
       const payload = JSON.stringify(message);
-      
+
       await new Promise<void>((resolve, reject) => {
         mqttClient!.publish(topic, payload, { qos: 1 }, (error) => {
           if (error) {
@@ -439,11 +509,11 @@ export async function publishMqttMessage(
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       console.error(`[MQTT] Intento ${attempt}/${retries} falló para "${topic}":`, lastError.message);
-      
+
       // Si no es el último intento, esperar antes de reintentar
       if (attempt < retries) {
         await new Promise(resolve => setTimeout(resolve, retryDelay));
-        
+
         // Intentar reconectar si se perdió la conexión
         if (!mqttClient?.connected) {
           try {
