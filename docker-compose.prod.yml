@@ -18,6 +18,7 @@ services:
       timeout: 5s
       retries: 30
 
+# Este servicio es para pruebas locales, en el despliegue se usaria el broker del laboratorio, por lo cual no sería necesario levantarlo.
   mosquitto:
     image: eclipse-mosquitto:2
     container_name: simmer_mosquitto
@@ -54,10 +55,10 @@ services:
       - .env.production
     environment:
       NODE_ENV: "production"
-      # Asegura que use el broker interno
+      # Broker interno de test levantado en este docker
       MQTT_BROKER_URL: "mqtt://mosquitto:1883"
-      # Brocker remoto (descomentar si se quiere usar)
-      # MQTT_BROKER_URL: "172.16.248.85:1883"
+      # Broker remoto (descomentar si se quiere usar asegurandose de que corresponda a el MQTT BROKER del laboratorio).
+      # MQTT_BROKER_URL: "mqtt://172.16.248.85:1883"
     expose:
       - "3000"
     depends_on:
