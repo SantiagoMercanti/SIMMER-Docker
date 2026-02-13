@@ -1,7 +1,8 @@
+// Archivo: src/app/api/sensors/[id]/route.ts
 import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { requireCanMutate, getCurrentUser, canAccessResource, canModifyResource } from '@/lib/auth';
+import { requireCanMutate, getCurrentUser, canAccessSensor, canModifyResource } from '@/lib/auth';
 import { refreshMqttSubscriptions } from '@/lib/mqtt-service';
 
 function toIntId(id: string) {
@@ -21,7 +22,6 @@ export async function GET(
   }
 
   try {
-    // Requiere autenticación
     const user = await getCurrentUser();
     if (!user) {
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
@@ -35,12 +35,7 @@ export async function GET(
         descripcion: true,
         unidad_medida_id: true,
         unidadMedida: {
-          select: {
-            id: true,
-            nombre: true,
-            simbolo: true,
-            categoria: true,
-          }
+          select: { id: true, nombre: true, simbolo: true, categoria: true },
         },
         valor_min: true,
         valor_max: true,
@@ -51,11 +46,7 @@ export async function GET(
         activo: true,
         creadorId: true,
         creador: {
-          select: {
-            email: true,
-            nombre: true,
-            apellido: true,
-          }
+          select: { email: true, nombre: true, apellido: true },
         },
       },
     });
@@ -64,17 +55,24 @@ export async function GET(
       return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
     }
 
-    // Verificar ownership
-    if (!canAccessResource(s.creadorId, user)) {
+    // Verificar acceso: creador, admin, o sensor en proyecto público
+    const tieneAcceso = await canAccessSensor(
+      { creadorId: s.creadorId },
+      user,
+      intId,
+      prisma
+    );
+    if (!tieneAcceso) {
       return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
     }
 
-    // Si está inactivo, solo admin puede verlo
     if (!s.activo && user.role !== 'admin') {
       return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
     }
 
-    // Devolver con la información de la unidad y creador
+    // Ocultar fuente_datos a usuarios que no son el creador ni admin
+    const esPropietarioOAdmin = user.role === 'admin' || s.creadorId === user.id;
+
     return NextResponse.json({
       id: s.sensor_id,
       nombre: s.nombre,
@@ -84,13 +82,16 @@ export async function GET(
       valorMin: s.valor_min ?? null,
       valorMax: s.valor_max ?? null,
       estado: Boolean(s.estado),
-      fuenteDatos: s.fuente_datos ?? null,
+      // fuente_datos es información sensible: solo para propietario y admin
+      fuenteDatos: esPropietarioOAdmin ? (s.fuente_datos ?? null) : null,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
-      creador: s.creador ? {
-        email: s.creador.email,
-        nombreCompleto: `${s.creador.nombre} ${s.creador.apellido}`.trim(),
-      } : null,
+      creador: s.creador
+        ? {
+            email: s.creador.email,
+            nombreCompleto: `${s.creador.nombre} ${s.creador.apellido}`.trim(),
+          }
+        : null,
     });
   } catch (_err: unknown) {
     console.error('Error en GET /api/sensors/:id', _err);
@@ -98,7 +99,7 @@ export async function GET(
   }
 }
 
-// PATCH /api/sensors/:id
+// PATCH /api/sensors/:id — sin cambios de lógica de permisos (solo el dueño edita)
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -110,10 +111,8 @@ export async function PATCH(
   }
 
   try {
-    // Requiere permisos de mutación
     const acting = await requireCanMutate();
 
-    // Verificar que el sensor existe y obtener su creador
     const existing = await prisma.sensor.findUnique({
       where: { sensor_id: intId },
       select: { creadorId: true, activo: true },
@@ -123,44 +122,34 @@ export async function PATCH(
       return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
     }
 
-    // Verificar ownership para modificación
     if (!canModifyResource(existing.creadorId, acting)) {
       return NextResponse.json({ error: 'No tienes permisos para editar este sensor' }, { status: 403 });
     }
 
     const body = await req.json();
 
-    // Campos opcionales (actualización parcial)
     const nombre: string | undefined = body?.nombre?.trim?.() || undefined;
     const unidadMedidaId: number | undefined = body?.unidadMedidaId;
     const descripcionRaw: unknown = body?.descripcion;
     const fuenteDatosRaw: unknown = body?.fuenteDatos;
 
     const descripcion =
-      typeof descripcionRaw === 'string'
-        ? (descripcionRaw.trim() || null)
-        : undefined;
+      typeof descripcionRaw === 'string' ? (descripcionRaw.trim() || null) : undefined;
     const fuenteDatos =
-      typeof fuenteDatosRaw === 'string'
-        ? (fuenteDatosRaw.trim() || null)
-        : undefined;
+      typeof fuenteDatosRaw === 'string' ? (fuenteDatosRaw.trim() || null) : undefined;
 
     let valorMin: number | undefined;
     let valorMax: number | undefined;
 
     if (body?.valorMin !== undefined && body?.valorMin !== '') {
       const n = Number(body.valorMin);
-      if (Number.isNaN(n)) {
-        return NextResponse.json({ error: 'valorMin debe ser numérico' }, { status: 400 });
-      }
+      if (Number.isNaN(n)) return NextResponse.json({ error: 'valorMin debe ser numérico' }, { status: 400 });
       valorMin = n;
     }
 
     if (body?.valorMax !== undefined && body?.valorMax !== '') {
       const n = Number(body.valorMax);
-      if (Number.isNaN(n)) {
-        return NextResponse.json({ error: 'valorMax debe ser numérico' }, { status: 400 });
-      }
+      if (Number.isNaN(n)) return NextResponse.json({ error: 'valorMax debe ser numérico' }, { status: 400 });
       valorMax = n;
     }
 
@@ -176,17 +165,15 @@ export async function PATCH(
     if (valorMax !== undefined) data.valor_max = valorMax;
     if (fuenteDatos !== undefined) data.fuente_datos = fuenteDatos;
 
-    // ✅ Variable para saber si necesitamos refrescar suscripciones MQTT
     let needsMqttRefresh = false;
 
-    // Reactivación (solo admin)
     if (body?.activo !== undefined) {
       if (body.activo === true) {
         if (acting.role !== 'admin') {
           return NextResponse.json({ error: 'Solo admin puede reactivar sensores' }, { status: 403 });
         }
         data.activo = true;
-        needsMqttRefresh = true; // ✅ Reactivar = necesita suscripción
+        needsMqttRefresh = true;
       } else if (body.activo === false) {
         return NextResponse.json({ error: 'Para desactivar use DELETE /api/sensors/:id' }, { status: 400 });
       } else {
@@ -198,18 +185,13 @@ export async function PATCH(
       return NextResponse.json({ error: 'Sin cambios' }, { status: 400 });
     }
 
-    const updated = await prisma.sensor.update({
-      where: { sensor_id: intId },
-      data,
-    });
+    const updated = await prisma.sensor.update({ where: { sensor_id: intId }, data });
 
-    // ✅ NUEVO: Refrescar suscripciones si el sensor fue reactivado
     if (needsMqttRefresh) {
       try {
         await refreshMqttSubscriptions();
-        console.log(`[API] ✓ Suscripción MQTT actualizada para sensor reactivado: ${updated.fuente_datos}`);
       } catch (mqttError) {
-        console.error('[API] ⚠️ Error al refrescar suscripciones MQTT:', mqttError);
+        console.error('[API] Error al refrescar suscripciones MQTT:', mqttError);
       }
     }
 
@@ -218,7 +200,6 @@ export async function PATCH(
     const status = (err as { status?: number })?.status ?? 0;
     if (status === 401) return NextResponse.json({ error: 'No autenticado' }, { status });
     if (status === 403) return NextResponse.json({ error: 'No tienes permisos para editar sensores' }, { status });
-
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
       return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
     }
@@ -226,7 +207,7 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/sensors/:id
+// DELETE /api/sensors/:id — sin cambios de lógica de permisos
 export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -238,10 +219,8 @@ export async function DELETE(
   }
 
   try {
-    // ✅ Requiere permisos de mutación
     const acting = await requireCanMutate();
 
-    // ✅ Verificar ownership
     const existing = await prisma.sensor.findUnique({
       where: { sensor_id: intId },
       select: { creadorId: true },
@@ -255,17 +234,12 @@ export async function DELETE(
       return NextResponse.json({ error: 'No tienes permisos para eliminar este sensor' }, { status: 403 });
     }
 
-    await prisma.sensor.update({
-      where: { sensor_id: intId },
-      data: { activo: false },
-    });
+    await prisma.sensor.update({ where: { sensor_id: intId }, data: { activo: false } });
 
-    // ✅ NUEVO: Refrescar suscripciones al desactivar (desuscribirse del tópico)
     try {
       await refreshMqttSubscriptions();
-      console.log(`[API] ✓ Suscripciones MQTT actualizadas tras desactivar sensor ${intId}`);
     } catch (mqttError) {
-      console.error('[API] ⚠️ Error al refrescar suscripciones MQTT:', mqttError);
+      console.error('[API] Error al refrescar suscripciones MQTT:', mqttError);
     }
 
     return NextResponse.json({ ok: true });
@@ -273,7 +247,6 @@ export async function DELETE(
     const status = (err as { status?: number })?.status ?? 0;
     if (status === 401) return NextResponse.json({ error: 'No autenticado' }, { status });
     if (status === 403) return NextResponse.json({ error: 'No tienes permisos para eliminar sensores' }, { status });
-
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
       return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
     }

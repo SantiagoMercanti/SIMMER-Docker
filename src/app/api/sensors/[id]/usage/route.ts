@@ -1,11 +1,9 @@
-// Ubicación: src/app/api/sensors/[id]/usage/route.ts
-
+// Archivo: src/app/api/sensors/[id]/usage/route.ts
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentUser, canAccessResource } from '@/lib/auth';
+import { getCurrentUser, canAccessSensor } from '@/lib/auth';
 
 // GET /api/sensors/:id/usage
-// Retorna la lista de proyectos activos que usan este sensor
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -18,44 +16,44 @@ export async function GET(
   }
 
   try {
-    // ✅ Requiere autenticación
     const user = await getCurrentUser();
     if (!user) {
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
     }
 
-    // ✅ Verificar que el sensor existe y el usuario puede acceder a él
     const sensor = await prisma.sensor.findUnique({
       where: { sensor_id: sensorId },
-      select: { 
-        sensor_id: true, 
-        creadorId: true,
-        activo: true 
-      },
+      select: { sensor_id: true, creadorId: true, activo: true },
     });
 
     if (!sensor) {
       return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
     }
 
-    // ✅ Verificar ownership del sensor
-    if (!canAccessResource(sensor.creadorId, user)) {
+    // Verificar acceso: creador, admin, o sensor en proyecto público
+    const tieneAcceso = await canAccessSensor(
+      { creadorId: sensor.creadorId },
+      user,
+      sensorId,
+      prisma
+    );
+    if (!tieneAcceso) {
       return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
     }
 
-    // ✅ Si el sensor está inactivo, solo admin puede ver su uso
     if (!sensor.activo && user.role !== 'admin') {
       return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
     }
 
-    // ✅ Filtrar proyectos por ownership (admin ve todos)
+    // Para usuarios ajenos al sensor, solo mostrar proyectos públicos
+    const esPropietarioOAdmin = user.role === 'admin' || sensor.creadorId === user.id;
+
     const rows = await prisma.proyectoSensor.findMany({
       where: {
         sensorId,
         proyecto: {
           activo: true,
-          // Si no es admin, solo mostrar proyectos propios
-          ...(user.role !== 'admin' ? { creadorId: user.id } : {}),
+          ...(esPropietarioOAdmin ? {} : { publico: true }),
         },
       },
       select: {
@@ -71,9 +69,6 @@ export async function GET(
     return NextResponse.json({ projects });
   } catch (error) {
     console.error('Error al obtener proyectos del sensor:', error);
-    return NextResponse.json(
-      { error: 'Error al obtener proyectos' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Error al obtener proyectos' }, { status: 500 });
   }
 }

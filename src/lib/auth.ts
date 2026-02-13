@@ -254,3 +254,32 @@ export function canModifyResource(
   // labManager solo puede modificar sus propios recursos
   return resourceCreatorId === currentUser.id;
 }
+
+/**
+ * Verifica si el usuario puede acceder a un sensor.
+ * Además de ser el creador o admin, se permite el acceso si el sensor
+ * está vinculado a al menos un proyecto público activo.
+ * Requiere acceso a prisma para la consulta de proyectos públicos.
+ */
+export async function canAccessSensor(
+  sensor: { creadorId: string },
+  currentUser: { id: string; role: Role },
+  sensorId: number,
+  prismaClient: { proyectoSensor: { count: (args: unknown) => Promise<number> } }
+): Promise<boolean> {
+  // Admin siempre puede
+  if (currentUser.role === 'admin') return true;
+  // El creador siempre puede
+  if (sensor.creadorId === currentUser.id) return true;
+  // Verificar si está vinculado a algún proyecto público activo
+  const count = await prismaClient.proyectoSensor.count({
+    where: {
+      sensorId,
+      proyecto: {
+        activo: true,
+        publico: true,
+      },
+    },
+  });
+  return count > 0;
+}

@@ -2,7 +2,7 @@
 
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentUser, canAccessResource } from '@/lib/auth';
+import { getCurrentUser, canAccessSensor } from '@/lib/auth';
 
 // GET /api/sensors/:id/projects
 // Retorna la lista de proyectos activos que tienen mediciones de este sensor
@@ -38,8 +38,14 @@ export async function GET(
       return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
     }
 
-    // Verificar ownership del sensor
-    if (!canAccessResource(sensor.creadorId, user)) {
+    // Verificar acceso: creador, admin, o sensor en proyecto público
+    const tieneAcceso = await canAccessSensor(
+      { creadorId: sensor.creadorId },
+      user,
+      sensorId,
+      prisma
+    );
+    if (!tieneAcceso) {
       return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
     }
 
@@ -48,15 +54,16 @@ export async function GET(
       return NextResponse.json({ error: 'Sensor no encontrado' }, { status: 404 });
     }
 
+    // Para usuarios ajenos al sensor, solo mostrar proyectos públicos
+    const esPropietarioOAdmin = user.role === 'admin' || sensor.creadorId === user.id;
+
     // Obtener proyectos únicos que tienen mediciones de este sensor
-    // Solo mostrar proyectos que el usuario puede ver (ownership)
     const projects = await prisma.proyectoSensor.findMany({
       where: {
         sensorId,
         proyecto: {
           activo: true,
-          // Si no es admin, solo mostrar proyectos propios
-          ...(user.role !== 'admin' ? { creadorId: user.id } : {}),
+          ...(esPropietarioOAdmin ? {} : { publico: true }),
         },
         mediciones: {
           some: {}, // Solo proyectos que tienen al menos una medición
