@@ -629,27 +629,29 @@ export default function ProjectDetailsModal({
                     )}
                   </div>
 
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 mb-1">Actuadores</p>
-                    {actuators.length === 0 ? (
-                      <p className="text-gray-600">No hay actuadores asociados.</p>
-                    ) : (
-                      <ul className="space-y-1">
-                        {actuators.map((a) => (
-                          <li key={a.id}>
-                            <button
-                              type="button"
-                              onClick={() => onOpenActuator?.(a.id)}
-                              className="text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              title="Ver detalle del actuador"
-                            >
-                              {a.nombre}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
+                  {detail.canEdit && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 mb-1">Actuadores</p>
+                      {actuators.length === 0 ? (
+                        <p className="text-gray-600">No hay actuadores asociados.</p>
+                      ) : (
+                        <ul className="space-y-1">
+                          {actuators.map((a) => (
+                            <li key={a.id}>
+                              <button
+                                type="button"
+                                onClick={() => onOpenActuator?.(a.id)}
+                                className="text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                title="Ver detalle del actuador"
+                              >
+                                {a.nombre}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </>
