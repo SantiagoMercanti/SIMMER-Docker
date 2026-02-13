@@ -263,9 +263,13 @@ export default function ProjectForm({
     if (!open) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
             <div className="absolute inset-0 bg-black/40" onClick={(onRequestClose ?? onCancel)} aria-hidden="true" />
-            <div ref={panelRef} tabIndex={-1} className="relative z-10 w-full max-w-2xl rounded-xl bg-white p-4 md:p-6 shadow-xl outline-none">
+            <div 
+                ref={panelRef} 
+                tabIndex={-1} 
+                className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl bg-white p-4 md:p-6 shadow-xl outline-none"
+            >
                 {formMarkup}
             </div>
         </div>
