@@ -170,6 +170,8 @@ model NotaProyecto {
   // Usuario que creó la nota
   usuarioId  String
   usuario    UserMetadata @relation(fields: [usuarioId], references: [id])
+
+  imagenes   ImagenNota[]
   
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -177,7 +179,22 @@ model NotaProyecto {
   @@index([proyectoId])
   @@index([usuarioId])
   @@index([createdAt])
-  }
+}
+
+model ImagenNota {
+  id        Int          @id @default(autoincrement())
+  notaId    Int
+  nota      NotaProyecto @relation(fields: [notaId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  datos     Bytes        @db.LongBlob
+  mimeType  String       // ej: "image/jpeg", "image/png"
+  nombre    String       // nombre original del archivo
+  tamanio   Int          // tamaño en bytes
+
+  createdAt DateTime     @default(now())
+
+  @@index([notaId])
+}
 
 // --- Tablas pivote (N:M) ---
 // Ahora las pivotes tienen su propio id y son dueñas de mediciones/registros

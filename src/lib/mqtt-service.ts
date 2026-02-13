@@ -92,7 +92,7 @@ export async function initMqttService(): Promise<void> {
     isInitialized = false;
   }
 
-  const brokerUrl = process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883';
+  const brokerUrl = process.env.MQTT_BROKER_URL || 'mqtt://172.16.248.85:1883';
 
   console.log(`[MQTT] Conectando al broker: ${brokerUrl}`);
   isConnecting = true;

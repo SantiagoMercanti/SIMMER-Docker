@@ -3,6 +3,35 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, canAccessResource } from '@/lib/auth';
 
+const MAX_IMAGENES = 3;
+const MAX_BYTES = 1 * 1024 * 1024; // 1 MB por imagen
+const MIME_PERMITIDOS = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+type ImagenInput = {
+  base64: string;
+  mimeType: string;
+  nombre: string;
+};
+
+function validarImagenes(imagenes: unknown): ImagenInput[] | null {
+  if (!Array.isArray(imagenes)) return null;
+  if (imagenes.length > MAX_IMAGENES) return null;
+
+  for (const img of imagenes) {
+    if (typeof img !== 'object' || img === null) return null;
+    const { base64, mimeType, nombre } = img as Record<string, unknown>;
+
+    if (typeof base64 !== 'string' || !base64.trim()) return null;
+    if (typeof mimeType !== 'string' || !MIME_PERMITIDOS.includes(mimeType)) return null;
+    if (typeof nombre !== 'string') return null;
+
+    const buffer = Buffer.from(base64, 'base64');
+    if (buffer.length > MAX_BYTES) return null;
+  }
+
+  return imagenes as ImagenInput[];
+}
+
 // GET /api/projects/:id/notes - Obtener todas las notas de un proyecto
 export async function GET(
   _req: Request,
@@ -21,7 +50,6 @@ export async function GET(
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
     }
 
-    // Verificar que el proyecto existe y el usuario tiene acceso
     const proyecto = await prisma.proyecto.findUnique({
       where: { project_id: projectId },
       select: { creadorId: true },
@@ -35,7 +63,6 @@ export async function GET(
       return NextResponse.json({ error: 'No tienes acceso a este proyecto' }, { status: 403 });
     }
 
-    // Obtener las notas
     const notas = await prisma.notaProyecto.findMany({
       where: { proyectoId: projectId },
       select: {
@@ -51,6 +78,16 @@ export async function GET(
             apellido: true,
           },
         },
+        // Solo metadatos, sin los bytes
+        imagenes: {
+          select: {
+            id: true,
+            mimeType: true,
+            nombre: true,
+            tamanio: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -65,6 +102,13 @@ export async function GET(
         email: nota.usuario.email,
         nombreCompleto: `${nota.usuario.nombre} ${nota.usuario.apellido}`.trim(),
       },
+      // Las imágenes se sirven por su propia route, acá solo los metadatos + ID
+      imagenes: nota.imagenes.map(img => ({
+        id: img.id,
+        mimeType: img.mimeType,
+        nombre: img.nombre,
+        tamanio: img.tamanio,
+      })),
     }));
 
     return NextResponse.json({ notas: notasFormateadas }, { status: 200 });
@@ -74,7 +118,7 @@ export async function GET(
   }
 }
 
-// POST /api/projects/:id/notes - Crear una nueva nota
+// POST /api/projects/:id/notes - Crear una nueva nota (con imágenes opcionales)
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -92,7 +136,6 @@ export async function POST(
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
     }
 
-    // Verificar que el proyecto existe y el usuario tiene acceso
     const proyecto = await prisma.proyecto.findUnique({
       where: { project_id: projectId },
       select: { creadorId: true },
@@ -107,18 +150,41 @@ export async function POST(
     }
 
     const body = await req.json().catch(() => ({}));
-    const { contenido } = body;
+    const { contenido, imagenes } = body;
 
     if (!contenido || typeof contenido !== 'string' || !contenido.trim()) {
       return NextResponse.json({ error: 'El contenido de la nota es obligatorio' }, { status: 400 });
     }
 
-    // Crear la nota
+    // Validar imágenes si se enviaron
+    let imagenesValidadas: ImagenInput[] = [];
+    if (imagenes !== undefined && imagenes !== null) {
+      const resultado = validarImagenes(imagenes);
+      if (resultado === null) {
+        return NextResponse.json(
+          { error: `Imágenes inválidas. Máximo ${MAX_IMAGENES}, hasta 1 MB cada una, formatos: JPEG, PNG, WebP, GIF` },
+          { status: 400 }
+        );
+      }
+      imagenesValidadas = resultado;
+    }
+
+    // Crear la nota junto con las imágenes en una sola transacción
     const nota = await prisma.notaProyecto.create({
       data: {
         proyectoId: projectId,
         usuarioId: user.id,
         contenido: contenido.trim(),
+        imagenes: imagenesValidadas.length > 0
+          ? {
+              create: imagenesValidadas.map(img => ({
+                datos: Buffer.from(img.base64, 'base64'),
+                mimeType: img.mimeType,
+                nombre: img.nombre,
+                tamanio: Buffer.from(img.base64, 'base64').length,
+              })),
+            }
+          : undefined,
       },
       select: {
         id: true,
@@ -132,6 +198,15 @@ export async function POST(
             nombre: true,
             apellido: true,
           },
+        },
+        imagenes: {
+          select: {
+            id: true,
+            mimeType: true,
+            nombre: true,
+            tamanio: true,
+          },
+          orderBy: { createdAt: 'asc' },
         },
       },
     });
@@ -147,6 +222,12 @@ export async function POST(
           email: nota.usuario.email,
           nombreCompleto: `${nota.usuario.nombre} ${nota.usuario.apellido}`.trim(),
         },
+        imagenes: nota.imagenes.map(img => ({
+          id: img.id,
+          mimeType: img.mimeType,
+          nombre: img.nombre,
+          tamanio: img.tamanio,
+        })),
       },
       message: 'Nota creada exitosamente',
     }, { status: 201 });
