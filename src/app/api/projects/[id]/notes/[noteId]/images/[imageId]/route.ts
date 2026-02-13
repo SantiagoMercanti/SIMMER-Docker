@@ -60,11 +60,16 @@ export async function GET(
       return NextResponse.json({ error: 'Imagen no encontrada' }, { status: 404 });
     }
 
-    return new NextResponse(imagen.datos, {
+    // ✅ Convertimos a ArrayBuffer "puro" (evita ArrayBuffer | SharedArrayBuffer)
+    const bytes = imagen.datos; // Prisma Bytes -> Uint8Array (ArrayBufferLike)
+    const arrayBuffer = new ArrayBuffer(bytes.byteLength);
+    new Uint8Array(arrayBuffer).set(bytes);
+
+    return new NextResponse(arrayBuffer, {
       status: 200,
       headers: {
-        'Content-Type': imagen.mimeType,
-        'Content-Disposition': `inline; filename="${imagen.nombre}"`,
+        'Content-Type': imagen.mimeType ?? 'application/octet-stream',
+        'Content-Disposition': `inline; filename="${imagen.nombre ?? 'imagen'}"`,
         // Cache moderado: válido 5 minutos, revalidable
         'Cache-Control': 'private, max-age=300, stale-while-revalidate=60',
       },

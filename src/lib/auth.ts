@@ -1,8 +1,11 @@
 import { cookies } from 'next/headers';
 import jwt, { JwtPayload } from 'jsonwebtoken';
 import { prisma } from '@/lib/prisma';
+import { PrismaClient } from '@prisma/client';
 
 export type Role = 'operator' | 'labManager' | 'admin';
+
+type PrismaForSensorAccess = Pick<PrismaClient, 'proyectoSensor'>;
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
 
@@ -259,13 +262,12 @@ export function canModifyResource(
  * Verifica si el usuario puede acceder a un sensor.
  * Además de ser el creador o admin, se permite el acceso si el sensor
  * está vinculado a al menos un proyecto público activo.
- * Requiere acceso a prisma para la consulta de proyectos públicos.
  */
 export async function canAccessSensor(
   sensor: { creadorId: string },
   currentUser: { id: string; role: Role },
   sensorId: number,
-  prismaClient: { proyectoSensor: { count: (args: unknown) => Promise<number> } }
+  prismaClient: PrismaForSensorAccess
 ): Promise<boolean> {
   // Admin siempre puede
   if (currentUser.role === 'admin') return true;
