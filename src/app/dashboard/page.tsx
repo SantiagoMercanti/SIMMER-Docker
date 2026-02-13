@@ -11,6 +11,7 @@ import SensorMeasurementsModal from '../components/SensorMeasurementsModal';
 import Header from '../components/Header';
 
 type Item = { id: string; name: string };
+type ProjectItem = Item & { activo?: boolean; canEdit?: boolean; canDelete?: boolean };
 type Role = 'operator' | 'labManager' | 'admin';
 
 const BASE = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
@@ -29,7 +30,7 @@ export default function DashboardPage() {
   const [actuatorInitial, setActuatorInitial] = useState<Partial<SensorActuatorFormValues> | undefined>(undefined);
   const [proyectoInitial, setProyectoInitial] = useState<Partial<ProjectFormValues> | undefined>(undefined);
 
-  const [proyectos, setProyectos] = useState<Item[]>([]);
+  const [proyectos, setProyectos] = useState<ProjectItem[]>([]);
   const [sensores, setSensores] = useState<Item[]>([]);
   const [actuadores, setActuadores] = useState<Item[]>([]);
   const [loading, setLoading] = useState({ proj: false, sens: false, act: false });
@@ -55,8 +56,9 @@ export default function DashboardPage() {
       const url = `${BASE}/api/projects${includeInactive ? '?includeInactive=true' : ''}`;
       const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) throw new Error('No se pudieron obtener proyectos');
-      const data: Item[] = await res.json();
-      setProyectos(data);
+      const data: ProjectItem[] = await res.json();
+      // canEdit del API cubre tanto editar como eliminar: los mismos que pueden editar pueden eliminar
+      setProyectos(data.map(p => ({ ...p, canDelete: p.canEdit })));
     } finally {
       setLoading(s => ({ ...s, proj: false }));
     }
@@ -405,8 +407,8 @@ export default function DashboardPage() {
               onReactivate={handleReactivateProject}
               onView={handleViewProject}
               canCreate={canMutate}
-              canEdit={canMutate}
-              canDelete={canMutate}
+              canEdit={false}
+              canDelete={false}
             />
 
             <ElementList

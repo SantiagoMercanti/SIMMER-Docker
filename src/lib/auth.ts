@@ -205,6 +205,39 @@ export function canAccessResource(
 }
 
 /**
+ * Verifica si el usuario actual puede acceder a un proyecto específico.
+ * - Admin puede acceder a todo
+ * - El creador siempre puede acceder a sus proyectos
+ * - Proyectos públicos son visibles para cualquier usuario autenticado
+ * - Proyectos privados solo son visibles para su creador (y admin)
+ */
+export function canAccessProject(
+  project: { creadorId: string; publico: boolean },
+  currentUser: { id: string; role: Role }
+): boolean {
+  if (currentUser.role === 'admin') return true;
+  if (project.creadorId === currentUser.id) return true;
+  return project.publico === true;
+}
+
+/**
+ * Construye el filtro de Prisma para listar proyectos según el usuario.
+ * - Admin: ve todos
+ * - Otros: ven sus propios proyectos + los públicos
+ */
+export function getProjectFilter(userId: string, userRole: Role) {
+  if (userRole === 'admin') {
+    return {};
+  }
+  return {
+    OR: [
+      { creadorId: userId },
+      { publico: true },
+    ],
+  };
+}
+
+/**
  * Verifica si el usuario actual puede modificar un recurso específico.
  * Requiere tanto permiso de mutación (no-operator) como ownership.
  */

@@ -1,14 +1,16 @@
+// Archivo: src/app/api/projects/route.ts
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireCanMutate, getCurrentUser, getOwnershipFilter } from '@/lib/auth';
+import { requireCanMutate, getCurrentUser, getOwnershipFilter, getProjectFilter } from '@/lib/auth';
 
 // -------- GET /api/projects --------
-// Devuelve una lista simplificada para el dashboard: [{ id: string, name: string, activo: boolean }]
+// Devuelve proyectos propios + proyectos públicos de otros usuarios.
+// Los proyectos públicos ajenos se devuelven con canEdit: false para que la UI
+// sepa que no puede mostrar botones de editar/eliminar.
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const includeInactive = searchParams.get('includeInactive') === 'true';
 
-  // Requiere autenticación
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
@@ -20,18 +22,20 @@ export async function GET(req: Request) {
   }
 
   try {
-    // Obtener filtro de ownership según el rol del usuario
-    const ownershipFilter = getOwnershipFilter(user.id, user.role);
+    // getProjectFilter devuelve: admin → {}, otros → { OR: [{ creadorId }, { publico: true }] }
+    const projectFilter = getProjectFilter(user.id, user.role);
 
     const proyectos = await prisma.proyecto.findMany({
       where: {
         ...(includeInactive ? {} : { activo: true }),
-        ...ownershipFilter, // Filtra por creadorId (excepto admin)
+        ...projectFilter,
       },
       select: {
         project_id: true,
         nombre: true,
         activo: true,
+        publico: true,
+        creadorId: true,
       },
       orderBy: [{ activo: 'desc' }, { project_id: 'desc' }],
     });
@@ -40,6 +44,9 @@ export async function GET(req: Request) {
       id: String(p.project_id),
       name: p.nombre,
       activo: p.activo,
+      publico: p.publico,
+      // canEdit: true solo si es el dueño o admin
+      canEdit: user.role === 'admin' || p.creadorId === user.id,
     }));
 
     return NextResponse.json(items, { status: 200 });
@@ -52,7 +59,6 @@ export async function GET(req: Request) {
 // -------- POST /api/projects --------
 export async function POST(req: Request) {
   try {
-    // Bloquea a 'operator' y obtiene el usuario autenticado
     const acting = await requireCanMutate();
 
     const body = await req.json().catch(() => ({}));
@@ -61,16 +67,16 @@ export async function POST(req: Request) {
       descripcion = null,
       sensorIds = [],
       actuatorIds = [],
+      publico = false,
     } = body ?? {};
 
-    // Validaciones mínimas
+    // Validaciones
     if (!nombre || typeof nombre !== 'string' || !nombre.trim()) {
       return NextResponse.json({ error: 'El nombre es obligatorio.' }, { status: 400 });
     }
     if (descripcion !== null && descripcion !== undefined && typeof descripcion !== 'string') {
       return NextResponse.json({ error: 'La descripción debe ser texto o null.' }, { status: 400 });
     }
-    // Validar que descripción no esté vacía
     if (!descripcion || typeof descripcion !== 'string' || !descripcion.trim()) {
       return NextResponse.json({ error: 'La descripción es obligatoria.' }, { status: 400 });
     }
@@ -80,48 +86,39 @@ export async function POST(req: Request) {
     if (!Array.isArray(actuatorIds) || !actuatorIds.every((n: number) => Number.isInteger(n) && n > 0)) {
       return NextResponse.json({ error: 'actuatorIds debe ser un arreglo de enteros positivos.' }, { status: 400 });
     }
-
-    // Validar que haya al menos un sensor o actuador
     if (sensorIds.length === 0 && actuatorIds.length === 0) {
       return NextResponse.json({ error: 'Debe seleccionar al menos un sensor o actuador.' }, { status: 400 });
+    }
+    if (typeof publico !== 'boolean') {
+      return NextResponse.json({ error: 'publico debe ser booleano.' }, { status: 400 });
     }
 
     // Verificar ownership de sensores y actuadores
     if (sensorIds.length) {
       const ownershipFilter = getOwnershipFilter(acting.id, acting.role);
-      const countSens = await prisma.sensor.count({ 
-        where: { 
-          sensor_id: { in: sensorIds },
-          ...ownershipFilter,
-        } 
+      const countSens = await prisma.sensor.count({
+        where: { sensor_id: { in: sensorIds }, ...ownershipFilter },
       });
       if (countSens !== sensorIds.length) {
-        return NextResponse.json({ 
-          error: 'Uno o más sensores no existen o no te pertenecen.' 
-        }, { status: 400 });
+        return NextResponse.json({ error: 'Uno o más sensores no existen o no te pertenecen.' }, { status: 400 });
       }
     }
     if (actuatorIds.length) {
       const ownershipFilter = getOwnershipFilter(acting.id, acting.role);
-      const countActs = await prisma.actuador.count({ 
-        where: { 
-          actuator_id: { in: actuatorIds },
-          ...ownershipFilter,
-        } 
+      const countActs = await prisma.actuador.count({
+        where: { actuator_id: { in: actuatorIds }, ...ownershipFilter },
       });
       if (countActs !== actuatorIds.length) {
-        return NextResponse.json({ 
-          error: 'Uno o más actuadores no existen o no te pertenecen.' 
-        }, { status: 400 });
+        return NextResponse.json({ error: 'Uno o más actuadores no existen o no te pertenecen.' }, { status: 400 });
       }
     }
 
-    // Creación del proyecto + relaciones N:M en las tablas pivote
     const nuevo = await prisma.proyecto.create({
       data: {
         nombre: nombre.trim(),
         descripcion: descripcion.trim(),
-        creadorId: acting.id, // ASIGNAR EL CREADOR
+        creadorId: acting.id,
+        publico,
         sensores: {
           create: sensorIds.map((sid: number) => ({
             sensor: { connect: { sensor_id: sid } },
@@ -133,25 +130,17 @@ export async function POST(req: Request) {
           })),
         },
       },
-      select: {
-        project_id: true,
-        nombre: true,
-      },
+      select: { project_id: true, nombre: true, publico: true },
     });
 
     return NextResponse.json(
-      {
-        id: String(nuevo.project_id),
-        name: nuevo.nombre,
-        message: 'Proyecto creado',
-      },
+      { id: String(nuevo.project_id), name: nuevo.nombre, publico: nuevo.publico, message: 'Proyecto creado' },
       { status: 201 }
     );
   } catch (err: unknown) {
     const status = (err as { status?: number })?.status ?? 500;
     if (status === 401) return NextResponse.json({ error: 'No autenticado' }, { status });
     if (status === 403) return NextResponse.json({ error: 'No tienes permisos para crear proyectos' }, { status });
-
     console.error('POST /api/projects error:', err);
     return NextResponse.json({ error: 'No se pudo crear el proyecto' }, { status });
   }

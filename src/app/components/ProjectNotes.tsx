@@ -35,6 +35,7 @@ type Props = {
   projectId: number;
   currentUserId?: string;
   isAdmin?: boolean;
+  canWrite?: boolean; // false = proyecto público ajeno, solo lectura
 };
 
 const MAX_IMAGENES = 3;
@@ -281,7 +282,7 @@ function GaleriaImagenes({
   );
 }
 
-export default function ProjectNotes({ projectId, currentUserId, isAdmin }: Props) {
+export default function ProjectNotes({ projectId, currentUserId, isAdmin, canWrite = true }: Props) {
   const [notas, setNotas] = useState<Nota[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -422,40 +423,46 @@ export default function ProjectNotes({ projectId, currentUserId, isAdmin }: Prop
     }
   };
 
-  const canEdit = (nota: Nota) => nota.usuario.id === currentUserId || isAdmin;
+  const canEdit = (nota: Nota) => canWrite && (nota.usuario.id === currentUserId || isAdmin);
 
   return (
     <div className="space-y-4">
-      {/* Formulario nueva nota */}
-      <form onSubmit={handleSubmit} className="space-y-3">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Nueva nota
-          </label>
-          <textarea
-            value={nuevoContenido}
-            onChange={(e) => setNuevoContenido(e.target.value)}
-            placeholder="Escribe una nota sobre este proyecto..."
-            rows={3}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-gray-800"
+      {/* Formulario nueva nota — solo si el usuario puede escribir */}
+      {canWrite ? (
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Nueva nota
+            </label>
+            <textarea
+              value={nuevoContenido}
+              onChange={(e) => setNuevoContenido(e.target.value)}
+              placeholder="Escribe una nota sobre este proyecto..."
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-gray-800"
+              disabled={submitting}
+            />
+          </div>
+
+          <SelectorImagenes
+            imagenes={nuevasImagenes}
+            onChange={setNuevasImagenes}
             disabled={submitting}
           />
-        </div>
 
-        <SelectorImagenes
-          imagenes={nuevasImagenes}
-          onChange={setNuevasImagenes}
-          disabled={submitting}
-        />
-
-        <button
-          type="submit"
-          disabled={submitting || !nuevoContenido.trim()}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors"
-        >
-          {submitting ? 'Guardando...' : 'Agregar nota'}
-        </button>
-      </form>
+          <button
+            type="submit"
+            disabled={submitting || !nuevoContenido.trim()}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors"
+          >
+            {submitting ? 'Guardando...' : 'Agregar nota'}
+          </button>
+        </form>
+      ) : (
+        <p className="text-sm text-gray-500 italic bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
+          Este es un proyecto público. Solo podés ver las notas.
+        </p>
+      )}
 
       {/* Lista de notas */}
       <div className="space-y-3">

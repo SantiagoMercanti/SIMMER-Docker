@@ -150,6 +150,7 @@ model Proyecto {
   actuadores ProyectoActuador[]
   notas      NotaProyecto[]
 
+  publico   Boolean  @default(false) // true = visible para todos los usuarios
   estado    Boolean  @default(true)
   activo    Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -157,6 +158,7 @@ model Proyecto {
 
   @@index([nombre])
   @@index([activo])
+  @@index([publico])
   @@index([creadorId])
   }
 

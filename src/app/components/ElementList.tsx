@@ -3,7 +3,9 @@
 export type ElementItem = {
   id: string;
   name: string;
-  activo?: boolean;  // ← Agregado
+  activo?: boolean;
+  canEdit?: boolean;   // si no se pasa, hereda el canEdit global del componente
+  canDelete?: boolean; // ídem
 };
 
 type ElementListProps = {
@@ -55,8 +57,11 @@ export default function ElementList({
       ) : (
         <ul className="divide-y divide-gray-200 max-h-[50vh] overflow-y-auto">
           {items.map((item) => {
-            const isInactive = item.activo === false;  // ← Agregado
-            
+            const isInactive = item.activo === false;
+            // El permiso por ítem tiene precedencia sobre el prop global
+            const itemCanEdit  = item.canEdit  !== undefined ? item.canEdit  : canEdit;
+            const itemCanDelete = item.canDelete !== undefined ? item.canDelete : canDelete;
+
             return (
               <li key={item.id} className="flex items-center justify-between py-3">
                 {onView ? (
@@ -73,7 +78,7 @@ export default function ElementList({
                 )}
 
                 <div className="flex items-center gap-2">
-                  {onEdit && canEdit && (
+                  {onEdit && itemCanEdit && (
                     <button
                       type="button"
                       onClick={() => onEdit?.(item.id)}
@@ -82,7 +87,6 @@ export default function ElementList({
                       Editar
                     </button>
                   )}
-                  {/* ↓ Modificado */}
                   {isInactive && onReactivate ? (
                     <button
                       type="button"
@@ -92,7 +96,7 @@ export default function ElementList({
                       Reactivar
                     </button>
                   ) : (
-                    onDelete && canDelete && (
+                    onDelete && itemCanDelete && (
                       <button
                         type="button"
                         onClick={() => onDelete?.(item.id)}

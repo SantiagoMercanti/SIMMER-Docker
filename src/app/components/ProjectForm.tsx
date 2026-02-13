@@ -7,6 +7,7 @@ export type ProjectFormValues = {
     descripcion: string;
     sensorIds: number[];
     actuatorIds: number[];
+    publico: boolean;
 };
 
 export type SimpleItem = { id: number; name: string };
@@ -42,6 +43,7 @@ export default function ProjectForm({
         descripcion: initialValues.descripcion ?? '',
         sensorIds: initialValues.sensorIds ?? [],
         actuatorIds: initialValues.actuatorIds ?? [],
+        publico: initialValues.publico ?? false,
     });
 
     const [errors, setErrors] = useState<Record<string, string>>({});
@@ -55,6 +57,7 @@ export default function ProjectForm({
             descripcion: initialValues.descripcion ?? '',
             sensorIds: initialValues.sensorIds ?? [],
             actuatorIds: initialValues.actuatorIds ?? [],
+            publico: initialValues.publico ?? false,
         });
         setErrors({});
     }, [asModal, open, initialValues.nombre, initialValues.descripcion, initialValues.sensorIds, initialValues.actuatorIds]);
@@ -194,6 +197,47 @@ export default function ProjectForm({
                 {errors.sensores && (
                     <p className="text-xs text-red-600 mt-1">{errors.sensores}</p>
                 )}
+            </div>
+
+            {/* Visibilidad */}
+            <div>
+                <p className="mb-2 text-sm text-gray-600">Visibilidad</p>
+                <div className="flex items-center gap-3">
+                    <button
+                        type="button"
+                        onClick={() => setValues((v) => ({ ...v, publico: false }))}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-md border text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                            !values.publico
+                                ? 'bg-blue-600 text-white border-blue-600'
+                                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                        }`}
+                    >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                        Privado
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setValues((v) => ({ ...v, publico: true }))}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-md border text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                            values.publico
+                                ? 'bg-blue-600 text-white border-blue-600'
+                                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                        }`}
+                    >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                        Público
+                    </button>
+                </div>
+                <p className="mt-1.5 text-xs text-gray-500">
+                    {values.publico
+                        ? 'Todos los usuarios pueden ver este proyecto, pero solo vos podés editarlo.'
+                        : 'Solo vos y los administradores pueden ver este proyecto.'}
+                </p>
             </div>
 
             {/* Acciones */}

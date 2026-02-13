@@ -9,6 +9,8 @@ type ApiProjectAnyCase = {
 
   nombre: string;
   descripcion?: string | null;
+  publico?: boolean;
+  canEdit?: boolean;
 
   sensorIds?: number[];
   actuatorIds?: number[];
@@ -41,6 +43,8 @@ type ProjectDetail = {
   id: number;
   nombre: string;
   descripcion: string;
+  publico: boolean;
+  canEdit: boolean;
   sensors: Array<{ 
     id: number; 
     nombre: string; 
@@ -149,7 +153,9 @@ function normalizeProject(p: ApiProjectAnyCase): ProjectDetail {
   return { 
     id, 
     nombre, 
-    descripcion, 
+    descripcion,
+    publico: p.publico ?? false,
+    canEdit: p.canEdit ?? true, // default true para no romper usos sin el campo
     sensors, 
     actuators,
     creador: p.creador ?? null,
@@ -217,6 +223,10 @@ export default function ProjectDetailsModal({
       const norm = normalizeProject(raw);
       if (!abort) {
         setDetail(norm);
+        // Si el usuario no es dueño, asegurarse de mostrar Info (no Notas)
+        if (!norm.canEdit) {
+          setActiveTab('info');
+        }
       }
     } catch (e) {
       console.error(e);
@@ -433,7 +443,36 @@ export default function ProjectDetailsModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
       <div className="w-full max-w-3xl rounded-xl bg-white shadow-lg flex flex-col max-h-[85vh]">
         <div className="flex items-center justify-between border-b px-5 py-4 flex-shrink-0">
-          <h3 className="text-lg font-semibold text-gray-800">Detalle del Proyecto</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-gray-800">Detalle del Proyecto</h3>
+            {detail && (
+              <span
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                  detail.publico
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-gray-100 text-gray-600'
+                }`}
+                title={detail.publico ? 'Visible para todos los usuarios' : 'Solo visible para vos y administradores'}
+              >
+                {detail.publico ? (
+                  <>
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                    Público
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    Privado
+                  </>
+                )}
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             {activeTab === 'info' && (
               <>
@@ -454,7 +493,7 @@ export default function ProjectDetailsModal({
                   {loading ? 'Actualizando...' : 'Actualizar'}
                 </button>
 
-                {detail && (sensors.length > 0 || actuators.length > 0) && (
+                {detail && detail.canEdit && (sensors.length > 0 || actuators.length > 0) && (
                   <button
                     onClick={handleDownloadAllCSVs}
                     disabled={downloadingCsvs}
@@ -503,16 +542,19 @@ export default function ProjectDetailsModal({
             >
               Información
             </button>
-            <button
-              onClick={() => setActiveTab('notes')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'notes'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-600 hover:text-gray-800'
-              }`}
-            >
-              Notas
-            </button>
+            {/* Notas solo visibles para el dueño del proyecto o admin */}
+            {(!detail || detail.canEdit) && (
+              <button
+                onClick={() => setActiveTab('notes')}
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'notes'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                Notas
+              </button>
+            )}
           </div>
         </div>
 
@@ -618,6 +660,7 @@ export default function ProjectDetailsModal({
               projectId={detail.id}
               currentUserId={currentUserId}
               isAdmin={isAdmin}
+              canWrite={detail.canEdit}
             />
           )}
         </div>
