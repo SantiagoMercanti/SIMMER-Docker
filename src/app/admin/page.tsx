@@ -1,6 +1,7 @@
 import { getCurrentUser } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import AdminUserTable from '../components/AdminUserTable';
+import AdminMqttConfig from '../components/AdminMqttConfig';
 import Header from '../components/Header';
 
 export default async function AdminPage() {
@@ -23,6 +24,9 @@ export default async function AdminPage() {
             </p>
           </header>
 
+          <div className="mb-8">
+            <AdminMqttConfig />
+          </div>
           <AdminUserTable />
         </div>
       </main>

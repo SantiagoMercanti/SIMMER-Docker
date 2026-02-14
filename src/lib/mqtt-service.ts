@@ -67,6 +67,43 @@ function stopHeartbeat() {
 }
 
 /**
+ * Lee la URL del broker desde DB (clave "mqtt_broker_url"),
+ * con fallback a process.env y luego al valor por defecto.
+ */
+async function getBrokerUrl(): Promise<string> {
+  const DEFAULT_URL = 'mqtt://172.16.248.85:1883';
+  try {
+    const config = await prisma.configSistema.findUnique({
+      where: { clave: 'mqtt_broker_url' },
+    });
+    if (config?.valor) return config.valor;
+  } catch (e) {
+    console.warn('[MQTT] No se pudo leer URL desde DB, usando env/default:', e);
+  }
+  return process.env.MQTT_BROKER_URL || DEFAULT_URL;
+}
+
+/**
+ * Cambia la URL del broker: persiste en DB, cierra la conexión actual
+ * y reconecta al nuevo broker.
+ */
+export async function changeBrokerUrl(newUrl: string): Promise<void> {
+  // Persistir en DB
+  await prisma.configSistema.upsert({
+    where: { clave: 'mqtt_broker_url' },
+    update: { valor: newUrl },
+    create: { clave: 'mqtt_broker_url', valor: newUrl },
+  });
+  console.log(`[MQTT] URL del broker actualizada a: ${newUrl}`);
+
+  // Cerrar conexión actual si existe
+  closeMqttConnection();
+
+  // Reconectar con la nueva URL
+  await initMqttService();
+}
+
+/**
  * Inicializa el cliente MQTT y se suscribe a los tópicos de sensores activos.
  */
 export async function initMqttService(): Promise<void> {
@@ -92,7 +129,7 @@ export async function initMqttService(): Promise<void> {
     isInitialized = false;
   }
 
-  const brokerUrl = process.env.MQTT_BROKER_URL || 'mqtt://172.16.248.85:1883';
+  const brokerUrl = await getBrokerUrl();
 
   console.log(`[MQTT] Conectando al broker: ${brokerUrl}`);
   isConnecting = true;

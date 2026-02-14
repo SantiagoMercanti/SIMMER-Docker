@@ -294,3 +294,9 @@ model SensorAlert {
   @@index([sensorId])
   @@index([timestamp])
 }
+
+model ConfigSistema {
+  clave     String   @id
+  valor     String   @db.Text
+  updatedAt DateTime @updatedAt
+}
