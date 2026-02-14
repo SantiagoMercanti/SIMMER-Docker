@@ -41,6 +41,7 @@ export default function DashboardPage() {
 
   const [openSensorDetails, setOpenSensorDetails] = useState(false);
   const [selectedSensorId, setSelectedSensorId] = useState<string | null>(null);
+  const [sensorDefaultProjectId, setSensorDefaultProjectId] = useState<number | undefined>(undefined);
   const [openActuatorDetails, setOpenActuatorDetails] = useState(false);
   const [selectedActuatorId, setSelectedActuatorId] = useState<string | null>(null);
   const [openProjectDetails, setOpenProjectDetails] = useState(false);
@@ -371,7 +372,7 @@ export default function DashboardPage() {
   const handleViewSensor = (id: string) => { setSelectedSensorId(id); setOpenSensorDetails(true); };
   const handleViewActuator = (id: string) => { setSelectedActuatorId(id); setOpenActuatorDetails(true); };
   const handleViewProject = (id: string) => { setSelectedProjectId(id); setOpenProjectDetails(true); };
-  const openSensorFromProject = (sensorId: number) => { setSelectedSensorId(String(sensorId)); setOpenSensorDetails(true); };
+  const openSensorFromProject = (sensorId: number, projectId?: number) => { setSelectedSensorId(String(sensorId)); setSensorDefaultProjectId(projectId); setOpenSensorDetails(true); };
   const openActuatorFromProject = (actuatorId: number) => { setSelectedActuatorId(String(actuatorId)); setOpenActuatorDetails(true); };
 
   const handleOpenMeasurements = (sensorId: number, projectId?: number) => {
@@ -489,12 +490,13 @@ export default function DashboardPage() {
         <SensorDetailsModal
           open={openSensorDetails}
           sensorId={selectedSensorId}
-          onClose={() => { setOpenSensorDetails(false); setSelectedSensorId(null); }}
+          onClose={() => { setOpenSensorDetails(false); setSelectedSensorId(null); setSensorDefaultProjectId(undefined); }}
           onOpenProject={(projectId) => {
             setSelectedProjectId(String(projectId));
             setOpenProjectDetails(true);
           }}
-          onOpenMeasurements={(sensorId) => handleOpenMeasurements(sensorId)}
+          onOpenMeasurements={(sensorId, projectId) => handleOpenMeasurements(sensorId, projectId ?? sensorDefaultProjectId)}
+          defaultProjectId={sensorDefaultProjectId}
         />
         <ActuatorDetailsModal
           open={openActuatorDetails}

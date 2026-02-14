@@ -83,7 +83,8 @@ type Props = {
   onGoProjects?: (sensorId: number) => void;
   onGoLogs?: (sensorId: number) => void;
   onOpenProject?: (projectId: number) => void;
-  onOpenMeasurements?: (sensorId: number) => void;
+  onOpenMeasurements?: (sensorId: number, projectId?: number) => void;
+  defaultProjectId?: number;
 };
 
 const BASE = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
@@ -129,6 +130,7 @@ export default function SensorDetailsModal({
   onClose,
   onOpenProject,
   onOpenMeasurements,
+  defaultProjectId,
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState<SensorDetail | null>(null);
@@ -472,7 +474,7 @@ export default function SensorDetailsModal({
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => detail && onOpenMeasurements?.(detail.id)}
+              onClick={() => detail && onOpenMeasurements?.(detail.id, defaultProjectId)}
               className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               Registro de Mediciones

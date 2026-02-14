@@ -63,7 +63,7 @@ type Props = {
   open: boolean;
   projectId: string | null;
   onClose: () => void;
-  onOpenSensor?: (sensorId: number) => void;
+  onOpenSensor?: (sensorId: number, projectId?: number) => void;
   onOpenActuator?: (actuatorId: number) => void;
   currentUserId?: string;
   isAdmin?: boolean;
@@ -600,7 +600,7 @@ export default function ProjectDetailsModal({
                           <li key={s.id} className="flex items-center justify-between gap-3 bg-gray-50 p-3 rounded-lg hover:bg-gray-100 transition-colors">
                             <button
                               type="button"
-                              onClick={() => onOpenSensor?.(s.id)}
+                              onClick={() => onOpenSensor?.(s.id, detail.id)}
                               className="text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
                               title="Ver detalle del sensor"
                             >

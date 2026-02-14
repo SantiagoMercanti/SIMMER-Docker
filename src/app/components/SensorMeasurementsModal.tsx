@@ -47,6 +47,7 @@ const AUTO_REFRESH_INTERVAL = 15 * 1000; // 15,000 ms
 export default function SensorMeasurementsModal({
   open,
   sensorId,
+  projectId,
   onClose,
   onOpenProject,
 }: Props) {
@@ -62,40 +63,76 @@ export default function SensorMeasurementsModal({
   
   // Bandera para evitar múltiples fetches simultáneos
   const isRefreshingRef = useRef(false);
+  const [projectsReady, setProjectsReady] = useState(false);
   
   const pageSize = 20;
   const maxMeasurements = 200;
 
-  // Obtener lista de proyectos cuando se abre el modal
+  // Cargar proyectos y mediciones en secuencia al abrir el modal
   useEffect(() => {
     if (!open || !sensorId) {
       setProjects([]);
       setSelectedProjectId(null);
+      setData(null);
+      setProjectsReady(false);
       return;
     }
+
+    setData(null);
+    setProjectsReady(false);
+    isRefreshingRef.current = false;
 
     let abort = false;
 
     (async () => {
       try {
-        const url = api(`/api/sensors/${sensorId}/projects`);
-        const res = await fetch(url, { cache: 'no-store' });
-        
-        if (res.ok) {
-          const json = await res.json();
+        // 1. Cargar lista de proyectos
+        const projRes = await fetch(api(`/api/sensors/${sensorId}/projects`), { cache: 'no-store' });
+        if (abort) return;
+
+        const resolvedProjectId = projectId ?? null;
+
+        if (projRes.ok) {
+          const json = await projRes.json();
           if (!abort && json.projects) {
             setProjects(json.projects);
           }
         }
+
+        if (abort) return;
+
+        // 2. Setear el proyecto seleccionado
+        setSelectedProjectId(resolvedProjectId);
+
+        // 3. Cargar mediciones directamente con el projectId ya resuelto
+        const params = new URLSearchParams({
+          page: '1',
+          pageSize: String(pageSize),
+          sortBy: sortField,
+          sortDirection: sortDirection,
+        });
+        if (resolvedProjectId) params.append('projectId', String(resolvedProjectId));
+
+        setLoading(true);
+        const measRes = await fetch(api(`/api/sensors/${sensorId}/measurements?${params}`), { cache: 'no-store' });
+        if (abort) return;
+
+        if (measRes.ok) {
+          const measJson = await measRes.json() as MeasurementsResponse;
+          if (!abort) setData(measJson);
+        }
       } catch (e) {
-        console.error('Error al cargar proyectos:', e);
+        console.error('Error al cargar datos:', e);
+      } finally {
+        if (!abort) {
+          setLoading(false);
+          setProjectsReady(true);
+        }
       }
     })();
 
-    return () => {
-      abort = true;
-    };
-  }, [open, sensorId]);
+    return () => { abort = true; };
+  }, [open, sensorId, projectId]);
 
   // Función para cargar mediciones (extraída para reutilizar)
   const loadMeasurements = useCallback(async () => {
@@ -168,8 +205,9 @@ export default function SensorMeasurementsModal({
       return;
     }
 
+    if (!projectsReady) return;
     loadMeasurements();
-  }, [open, sensorId, selectedProjectId, currentPage, sortField, sortDirection, loadMeasurements]);
+  }, [open, sensorId, selectedProjectId, currentPage, sortField, sortDirection, loadMeasurements, projectsReady]);
 
   // Effect separado para auto-refresh cada 30 segundos
   useEffect(() => {
