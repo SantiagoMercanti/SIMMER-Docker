@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { getMqttStatus, changeBrokerUrl } from '@/lib/mqtt-service';
+import { getMqttStatus, changeBrokerUrl, initMqttService } from '@/lib/mqtt-service';
 
 const DEFAULT_URL = process.env.MQTT_BROKER_URL || 'mqtt://172.16.248.85:1883';
 const MQTT_CONFIG_KEY = 'mqtt_broker_url';
@@ -15,6 +15,11 @@ export async function GET() {
     const config = await prisma.configSistema.findUnique({
       where: { clave: MQTT_CONFIG_KEY },
     });
+
+    // Si este worker aun no tiene conexion activa, inicializarla
+    if (!getMqttStatus().isConnected && !getMqttStatus().isConnecting) {
+      initMqttService().catch(() => { /* se reintentara via heartbeat */ });
+    }
 
     return NextResponse.json({
       brokerUrl: config?.valor ?? DEFAULT_URL,
