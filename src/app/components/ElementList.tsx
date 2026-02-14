@@ -7,6 +7,7 @@ export type ElementItem = {
   canEdit?: boolean;   // si no se pasa, hereda el canEdit global del componente
   canDelete?: boolean; // ídem
   publico?: boolean;
+  estado?: boolean;   // para proyectos: activo/inactivo, para usuarios: eliminado/no eliminado
 };
 
 type ElementListProps = {
@@ -69,7 +70,7 @@ export default function ElementList({
                   <button
                     type="button"
                     onClick={() => onView(item.id)}
-                    className="text-left text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className={`text-left hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 ${item.estado === false ? 'text-gray-400 opacity-50' : 'text-blue-600'}`}
                     title="Ver detalles"
                   >
                     {item.name}

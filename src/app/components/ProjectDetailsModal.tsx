@@ -64,7 +64,7 @@ type ProjectDetail = {
 type Props = {
   open: boolean;
   projectId: string | null;
-  onClose: () => void;
+  onClose: (updatedEstado?: boolean) => void;
   onOpenSensor?: (sensorId: number, projectId?: number) => void;
   onOpenActuator?: (actuatorId: number) => void;
   currentUserId?: string;
@@ -551,7 +551,7 @@ export default function ProjectDetailsModal({
             )}
 
             <button
-              onClick={onClose}
+              onClick={() => onClose(detail?.estado)}
               className="rounded-md p-2 text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               aria-label="Cerrar modal"
             >
@@ -701,7 +701,7 @@ export default function ProjectDetailsModal({
         <div className="flex items-center justify-end gap-3 border-t px-5 py-4 flex-shrink-0">
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => onClose(detail?.estado)}
             className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             Cerrar

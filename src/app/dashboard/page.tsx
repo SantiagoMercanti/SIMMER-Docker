@@ -511,7 +511,15 @@ export default function DashboardPage() {
         <ProjectDetailsModal
           open={openProjectDetails}
           projectId={selectedProjectId}
-          onClose={() => { setOpenProjectDetails(false); setSelectedProjectId(null); }}
+          onClose={(updatedEstado) => {
+            setOpenProjectDetails(false);
+            if (selectedProjectId !== null && updatedEstado !== undefined) {
+              setProyectos(prev => prev.map(p =>
+                p.id === selectedProjectId ? { ...p, estado: updatedEstado } : p
+              ));
+            }
+            setSelectedProjectId(null);
+          }}
           onOpenSensor={openSensorFromProject}
           onOpenActuator={openActuatorFromProject}
           currentUserId={userId ?? undefined}

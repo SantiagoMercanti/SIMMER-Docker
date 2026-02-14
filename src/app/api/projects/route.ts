@@ -35,6 +35,7 @@ export async function GET(req: Request) {
         nombre: true,
         activo: true,
         publico: true,
+        estado: true,
         creadorId: true,
       },
       orderBy: [{ activo: 'desc' }, { project_id: 'desc' }],
@@ -45,7 +46,7 @@ export async function GET(req: Request) {
       name: p.nombre,
       activo: p.activo,
       publico: p.publico,
-      // canEdit: true solo si es el dueño o admin
+      estado: p.estado,
       canEdit: user.role === 'admin' || p.creadorId === user.id,
     }));
 
@@ -130,11 +131,11 @@ export async function POST(req: Request) {
           })),
         },
       },
-      select: { project_id: true, nombre: true, publico: true },
+      select: { project_id: true, nombre: true, publico: true, estado: true },
     });
 
     return NextResponse.json(
-      { id: String(nuevo.project_id), name: nuevo.nombre, publico: nuevo.publico, message: 'Proyecto creado' },
+      { id: String(nuevo.project_id), name: nuevo.nombre, publico: nuevo.publico, estado: nuevo.estado, message: 'Proyecto creado' },
       { status: 201 }
     );
   } catch (err: unknown) {
