@@ -6,6 +6,7 @@ export type ElementItem = {
   activo?: boolean;
   canEdit?: boolean;   // si no se pasa, hereda el canEdit global del componente
   canDelete?: boolean; // ídem
+  publico?: boolean;
 };
 
 type ElementListProps = {
@@ -72,6 +73,11 @@ export default function ElementList({
                     title="Ver detalles"
                   >
                     {item.name}
+                    {item.publico && (
+                      <span title="Proyecto público" className="ml-1 text-xs text-blue-500" aria-label="Público">
+                        🌐
+                      </span>
+                    )}
                   </button>
                 ) : (
                   <span className="text-gray-700">{item.name}</span>

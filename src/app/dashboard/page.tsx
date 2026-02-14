@@ -11,7 +11,7 @@ import SensorMeasurementsModal from '../components/SensorMeasurementsModal';
 import Header from '../components/Header';
 
 type Item = { id: string; name: string };
-type ProjectItem = Item & { activo?: boolean; canEdit?: boolean; canDelete?: boolean };
+type ProjectItem = Item & { activo?: boolean; canEdit?: boolean; canDelete?: boolean; publico?: boolean };
 type Role = 'operator' | 'labManager' | 'admin';
 
 const BASE = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
@@ -59,7 +59,7 @@ export default function DashboardPage() {
       if (!res.ok) throw new Error('No se pudieron obtener proyectos');
       const data: ProjectItem[] = await res.json();
       // canEdit del API cubre tanto editar como eliminar: los mismos que pueden editar pueden eliminar
-      setProyectos(data.map(p => ({ ...p, canDelete: p.canEdit })));
+      setProyectos(data.map(p => ({ ...p, canDelete: p.canEdit, publico: p.publico })));
     } finally {
       setLoading(s => ({ ...s, proj: false }));
     }
