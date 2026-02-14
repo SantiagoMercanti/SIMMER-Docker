@@ -325,6 +325,7 @@ async function handleSensorMessage(topic: string, message: SensorMessage) {
           sensorId: sensor.sensor_id,
           proyecto: {
             activo: true,
+            estado: true,
           },
         },
         select: {
@@ -338,7 +339,7 @@ async function handleSensorMessage(topic: string, message: SensorMessage) {
       });
 
       if (proyectosSensor.length === 0) {
-        console.log(`[MQTT] Sensor "${sensor.nombre}" no está asociado a proyectos activos`);
+        console.log(`[MQTT] Sensor "${sensor.nombre}" no está asociado a proyectos activos y encendidos`);
         continue;
       }
 

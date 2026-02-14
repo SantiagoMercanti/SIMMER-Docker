@@ -27,6 +27,7 @@ export async function GET(
       descripcion: true,
       creadorId: true,
       publico: true,
+      estado: true,
 
       creador: {
         select: { email: true, nombre: true, apellido: true },
@@ -102,7 +103,7 @@ export async function GET(
     nombre: p.nombre,
     descripcion: p.descripcion ?? '',
     publico: p.publico,
-    // canEdit: true solo si es el dueño o admin
+    estado: p.estado,
     canEdit: user.role === 'admin' || p.creadorId === user.id,
     sensors,
     actuators,
@@ -145,7 +146,7 @@ export async function PATCH(
     }
 
     const body = await req.json().catch(() => ({}));
-    const { nombre, descripcion, sensorIds, actuatorIds, activo, publico } = body ?? {};
+    const { nombre, descripcion, sensorIds, actuatorIds, activo, publico, estado } = body ?? {};
 
     // Validaciones
     if (nombre !== undefined && (typeof nombre !== 'string' || !nombre.trim())) {
@@ -165,6 +166,9 @@ export async function PATCH(
     }
     if (publico !== undefined && typeof publico !== 'boolean') {
       return NextResponse.json({ error: 'publico debe ser booleano.' }, { status: 400 });
+    }
+    if (estado !== undefined && typeof estado !== 'boolean') {
+      return NextResponse.json({ error: 'estado debe ser booleano.' }, { status: 400 });
     }
 
     // Reactivación (solo admin)
@@ -205,6 +209,7 @@ export async function PATCH(
     if (descripcion !== undefined) updateData.descripcion = descripcion.trim();
     if (activo !== undefined) updateData.activo = activo;
     if (publico !== undefined) updateData.publico = publico;
+    if (estado !== undefined) updateData.estado = estado;
 
     const updated = await prisma.$transaction(async (tx) => {
       if (Object.keys(updateData).length > 0) {
@@ -233,12 +238,12 @@ export async function PATCH(
 
       return tx.proyecto.findUnique({
         where: { project_id: projectId },
-        select: { project_id: true, nombre: true, publico: true },
+        select: { project_id: true, nombre: true, publico: true, estado: true },
       });
     });
 
     return NextResponse.json(
-      { id: String(updated?.project_id), name: updated?.nombre, publico: updated?.publico, message: 'Proyecto actualizado' },
+      { id: String(updated?.project_id), name: updated?.nombre, publico: updated?.publico, estado: updated?.estado, message: 'Proyecto actualizado' },
       { status: 200 }
     );
   } catch (err: unknown) {

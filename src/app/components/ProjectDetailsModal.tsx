@@ -10,6 +10,7 @@ type ApiProjectAnyCase = {
   nombre: string;
   descripcion?: string | null;
   publico?: boolean;
+  estado?: boolean;
   canEdit?: boolean;
 
   sensorIds?: number[];
@@ -44,6 +45,7 @@ type ProjectDetail = {
   nombre: string;
   descripcion: string;
   publico: boolean;
+  estado: boolean;
   canEdit: boolean;
   sensors: Array<{ 
     id: number; 
@@ -155,6 +157,7 @@ function normalizeProject(p: ApiProjectAnyCase): ProjectDetail {
     nombre, 
     descripcion,
     publico: p.publico ?? false,
+    estado: p.estado ?? true,
     canEdit: p.canEdit ?? true, // default true para no romper usos sin el campo
     sensors, 
     actuators,
@@ -471,6 +474,34 @@ export default function ProjectDetailsModal({
                   </>
                 )}
               </span>
+            )}
+            {detail && detail.canEdit && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const nuevoEstado = !detail.estado;
+                  setDetail(prev => prev ? { ...prev, estado: nuevoEstado } : prev);
+                  try {
+                    const res = await fetch(api(`/api/projects/${detail.id}`), {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ estado: nuevoEstado }),
+                    });
+                    if (!res.ok) throw new Error();
+                  } catch {
+                    setDetail(prev => prev ? { ...prev, estado: !nuevoEstado } : prev);
+                  }
+                }}
+                title={detail.estado ? 'Proyecto encendido — click para apagar' : 'Proyecto apagado — click para encender'}
+                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium transition-colors ${
+                  detail.estado
+                    ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                }`}
+              >
+                <span className={`inline-block w-2 h-2 rounded-full ${detail.estado ? 'bg-blue-500' : 'bg-gray-400'}`} />
+                {detail.estado ? 'Encendido' : 'Apagado'}
+              </button>
             )}
           </div>
           <div className="flex items-center gap-2">

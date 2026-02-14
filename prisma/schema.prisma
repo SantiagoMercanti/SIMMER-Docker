@@ -158,6 +158,7 @@ model Proyecto {
 
   @@index([nombre])
   @@index([activo])
+  @@index([estado])
   @@index([publico])
   @@index([creadorId])
   }
