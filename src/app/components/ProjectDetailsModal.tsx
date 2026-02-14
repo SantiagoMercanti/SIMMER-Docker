@@ -452,7 +452,7 @@ export default function ProjectDetailsModal({
               <span
                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
                   detail.publico
-                    ? 'bg-green-100 text-green-700'
+                    ? 'bg-blue-100 text-blue-700'
                     : 'bg-gray-100 text-gray-600'
                 }`}
                 title={detail.publico ? 'Visible para todos los usuarios' : 'Solo visible para vos y administradores'}
@@ -495,11 +495,11 @@ export default function ProjectDetailsModal({
                 title={detail.estado ? 'Proyecto encendido — click para apagar' : 'Proyecto apagado — click para encender'}
                 className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium transition-colors ${
                   detail.estado
-                    ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                    ? 'bg-green-100 text-green-800 hover:bg-green-200'
                     : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                 }`}
               >
-                <span className={`inline-block w-2 h-2 rounded-full ${detail.estado ? 'bg-blue-500' : 'bg-gray-400'}`} />
+                <span className={`inline-block w-2 h-2 rounded-full ${detail.estado ? 'bg-green-500' : 'bg-gray-400'}`} />
                 {detail.estado ? 'Encendido' : 'Apagado'}
               </button>
             )}
