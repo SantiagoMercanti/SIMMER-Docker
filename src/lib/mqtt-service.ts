@@ -145,7 +145,7 @@ export async function initMqttService(): Promise<void> {
       mqttClient = mqtt.connect(brokerUrl, {
         clientId: `simmer_server_${Math.random().toString(16).slice(2, 10)}`,
         clean: true,
-        reconnectPeriod: 5000,
+        reconnectPeriod: 0,
         connectTimeout: 30000,
         keepalive: 60,
         protocolVersion: 4,
@@ -422,12 +422,12 @@ export function closeMqttConnection() {
   if (mqttClient) {
     console.log('[MQTT] Cerrando conexión...');
     stopHeartbeat();
+    connectionPromise = null;
+    isInitialized = false;
+    isConnecting = false;
     mqttClient.removeAllListeners();
     mqttClient.end(true);
     mqttClient = null;
-    isInitialized = false;
-    isConnecting = false;
-    connectionPromise = null;
   }
 }
 
