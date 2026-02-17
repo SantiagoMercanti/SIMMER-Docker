@@ -12,7 +12,7 @@ export async function POST(
   try {
     // 1. Autenticación: requiere labManager o admin
     const acting = await requireCanMutate();
-    
+
     // Obtener el usuario actual para el registro
     const currentUser = await getCurrentUser();
     if (!currentUser) {
@@ -90,8 +90,8 @@ export async function POST(
     // 5. Validar que el valor esté dentro del rango permitido
     if (valor < actuador.valor_min || valor > actuador.valor_max) {
       return NextResponse.json(
-        { 
-          error: `El valor debe estar entre ${actuador.valor_min} y ${actuador.valor_max}` 
+        {
+          error: `El valor debe estar entre ${actuador.valor_min} y ${actuador.valor_max}`
         },
         { status: 400 }
       );
@@ -109,20 +109,20 @@ export async function POST(
       const mqttConnected = isMqttConnected();
       console.log(`[Actuador Send] Estado MQTT inicial: ${mqttConnected ? 'Conectado' : 'Desconectado'}`);
       console.log(`[Actuador Send] Publicando a "${actuador.fuente_datos}":`, mqttMessage);
-      
+
       await publishMqttMessage(actuador.fuente_datos, mqttMessage, {
         retries: 3,
         retryDelay: 1000,
       });
-      
+
       console.log(`[Actuador Send] ✓ Mensaje MQTT publicado exitosamente`);
     } catch (mqttError) {
       console.error('[Actuador Send] Error al publicar MQTT:', mqttError);
-      
+
       const errorMessage = mqttError instanceof Error ? mqttError.message : String(mqttError);
-      
+
       return NextResponse.json(
-        { 
+        {
           error: 'No se pudo enviar el mensaje MQTT',
           details: errorMessage,
           suggestion: 'Verifique que el broker MQTT esté en ejecución y sea accesible desde el contenedor.'
@@ -137,8 +137,7 @@ export async function POST(
         actuadorId: actuador.actuator_id,
         proyecto: {
           activo: true,
-          // ✅ Solo proyectos del usuario (admin ve todos)
-          ...(acting.role !== 'admin' ? { creadorId: acting.id } : {}),
+          estado: true,  // consistente con mqtt-service.ts
         },
       },
       select: {
@@ -153,7 +152,7 @@ export async function POST(
 
     if (proyectosActuador.length === 0) {
       return NextResponse.json(
-        { 
+        {
           message: 'Mensaje MQTT enviado correctamente',
           warning: 'El actuador no está asociado a proyectos activos de tu propiedad, no se guardaron registros en BD',
           mqttTopic: actuador.fuente_datos,

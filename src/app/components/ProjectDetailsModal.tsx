@@ -697,16 +697,6 @@ export default function ProjectDetailsModal({
             />
           )}
         </div>
-
-        <div className="flex items-center justify-end gap-3 border-t px-5 py-4 flex-shrink-0">
-          <button
-            type="button"
-            onClick={() => onClose(detail?.estado)}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            Cerrar
-          </button>
-        </div>
       </div>
     </div>
   );
