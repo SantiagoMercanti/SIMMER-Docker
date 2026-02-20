@@ -108,7 +108,7 @@ export default function RegisterPage() {
               type="text"
               value={nombre}
               onChange={(e) => setNombre(e.target.value)}
-              placeholder="Juan"
+              placeholder="Carlos"
               required
               autoComplete="given-name"
               className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -124,7 +124,7 @@ export default function RegisterPage() {
               type="text"
               value={apellido}
               onChange={(e) => setApellido(e.target.value)}
-              placeholder="Pérez"
+              placeholder="García"
               required
               autoComplete="family-name"
               className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
