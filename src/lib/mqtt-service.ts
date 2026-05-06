@@ -290,6 +290,7 @@ async function handleSensorMessage(topic: string, message: SensorMessage) {
       where: {
         fuente_datos: topic,
         activo: true,
+        estado: true,
       },
       select: {
         sensor_id: true,

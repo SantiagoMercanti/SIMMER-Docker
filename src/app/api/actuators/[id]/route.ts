@@ -174,6 +174,13 @@ export async function PATCH(
     if (valorMax !== undefined) data.valor_max = valorMax;
     if (fuenteDatos !== undefined) data.fuente_datos = fuenteDatos;
 
+    if (body?.estado !== undefined) {
+      if (typeof body.estado !== 'boolean') {
+        return NextResponse.json({ error: 'estado debe ser booleano' }, { status: 400 });
+      }
+      data.estado = body.estado;
+    }
+
     // Reactivación (solo admin)
     if (body?.activo !== undefined) {
       if (body.activo === true) {

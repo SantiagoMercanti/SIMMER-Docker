@@ -122,6 +122,7 @@ export default function ActuatorDetailsModal({
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState<ActuatorDetail | null>(null);
   const [localEstado, setLocalEstado] = useState<boolean | null>(null);
+  const [savingEstado, setSavingEstado] = useState(false);
 
   // Input "Valor a enviar"
   const [sendValue, setSendValue] = useState<string>('');
@@ -298,6 +299,30 @@ export default function ActuatorDetailsModal({
     }
   };
 
+  const handleToggleEstado = async () => {
+    if (localEstado === null || !actuatorId || savingEstado) return;
+    const nuevoEstado = !localEstado;
+    setLocalEstado(nuevoEstado);
+    setSavingEstado(true);
+    try {
+      const res = await fetch(api(`/api/actuators/${actuatorId}`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: nuevoEstado }),
+      });
+      if (!res.ok) {
+        setLocalEstado(localEstado); // rollback
+        const j = await res.json().catch(() => ({}));
+        alert(j?.error ?? 'No se pudo cambiar el estado');
+      }
+    } catch {
+      setLocalEstado(localEstado); // rollback
+      alert('Error al cambiar el estado');
+    } finally {
+      setSavingEstado(false);
+    }
+  };
+
   const handleOpenRecords = () => {
     setShowRecordsModal(true);
   };
@@ -400,10 +425,12 @@ export default function ActuatorDetailsModal({
                     </div>
                     <button
                       type="button"
-                      onClick={() => setLocalEstado((s) => !s)}
+                      onClick={handleToggleEstado}
+                      disabled={savingEstado}
                       className={[
                         'relative inline-flex h-6 w-11 items-center rounded-full transition',
                         localEstado ? 'bg-green-500' : 'bg-gray-300',
+                        savingEstado ? 'opacity-50 cursor-not-allowed' : '',
                       ].join(' ')}
                       aria-pressed={localEstado ? 'true' : 'false'}
                     >

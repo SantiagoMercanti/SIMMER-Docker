@@ -135,6 +135,7 @@ export default function SensorDetailsModal({
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState<SensorDetail | null>(null);
   const [localEstado, setLocalEstado] = useState<boolean | null>(null);
+  const [savingEstado, setSavingEstado] = useState(false);
   const [role, setRole] = useState<Role>('operator'); // default
   
   // Estado para la lista de proyectos
@@ -275,6 +276,30 @@ export default function SensorDetailsModal({
     return () => { abort = true; };
   }, [showProjects, sensorId]);
 
+  const handleToggleEstado = async () => {
+    if (localEstado === null || !sensorId || savingEstado) return;
+    const nuevoEstado = !localEstado;
+    setLocalEstado(nuevoEstado);
+    setSavingEstado(true);
+    try {
+      const res = await fetch(api(`/api/sensors/${sensorId}`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: nuevoEstado }),
+      });
+      if (!res.ok) {
+        setLocalEstado(localEstado); // rollback
+        const j = await res.json().catch(() => ({}));
+        alert(j?.error ?? 'No se pudo cambiar el estado');
+      }
+    } catch {
+      setLocalEstado(localEstado); // rollback
+      alert('Error al cambiar el estado');
+    } finally {
+      setSavingEstado(false);
+    }
+  };
+
   // Valor actual con última medición real
   const valorActualConUnidad = useMemo(() => {
     if (!detail) return '—';
@@ -374,10 +399,12 @@ export default function SensorDetailsModal({
                   </div>
                   <button
                     type="button"
-                    onClick={() => setLocalEstado((s) => !s)}
+                    onClick={handleToggleEstado}
+                    disabled={savingEstado}
                     className={[
                       'relative inline-flex h-6 w-11 items-center rounded-full transition',
                       localEstado ? 'bg-green-500' : 'bg-gray-300',
+                      savingEstado ? 'opacity-50 cursor-not-allowed' : '',
                     ].join(' ')}
                     aria-pressed={localEstado ? 'true' : 'false'}
                   >
