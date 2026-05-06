@@ -47,6 +47,8 @@ export default function ProjectForm({
     });
 
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const [removalWarning, setRemovalWarning] = useState<{ sensors: string[]; actuators: string[] } | null>(null);
+    const [pendingSubmit, setPendingSubmit] = useState<ProjectFormValues | null>(null);
     const panelRef = useRef<HTMLDivElement>(null);
 
     // Reset al abrir/cambiar initialValues
@@ -113,7 +115,33 @@ export default function ProjectForm({
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!validate()) return;
+
+        // Solo advertir en edición (cuando hay un nombre inicial, es edit mode)
+        if (initialValues?.nombre) {
+            const originalSensorIds = new Set(initialValues.sensorIds ?? []);
+            const originalActuatorIds = new Set(initialValues.actuatorIds ?? []);
+            const removedSensors = sensores.filter((s) => originalSensorIds.has(s.id) && !values.sensorIds.includes(s.id)).map((s) => s.name);
+            const removedActuators = actuadores.filter((a) => originalActuatorIds.has(a.id) && !values.actuatorIds.includes(a.id)).map((a) => a.name);
+
+            if (removedSensors.length > 0 || removedActuators.length > 0) {
+                setRemovalWarning({ sensors: removedSensors, actuators: removedActuators });
+                setPendingSubmit(values);
+                return;
+            }
+        }
+
         onSubmit?.(values);
+    };
+
+    const handleConfirmRemoval = () => {
+        if (pendingSubmit) onSubmit?.(pendingSubmit);
+        setRemovalWarning(null);
+        setPendingSubmit(null);
+    };
+
+    const handleCancelRemoval = () => {
+        setRemovalWarning(null);
+        setPendingSubmit(null);
     };
 
     const wrapperClass = asModal ? 'space-y-4' : 'bg-white shadow-md rounded-lg p-4 md:p-6 space-y-4';
@@ -259,19 +287,89 @@ export default function ProjectForm({
         </form>
     );
 
-    if (!asModal) return formMarkup;
+    const removalWarningModal = removalWarning && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" role="dialog" aria-modal="true">
+            <div className="absolute inset-0 bg-black/50" aria-hidden="true" />
+            <div className="relative z-10 w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+                <div className="flex items-start gap-3 mb-4">
+                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center">
+                        <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h4 className="text-base font-semibold text-gray-900 mb-1">Pérdida permanente de mediciones</h4>
+                        <p className="text-sm text-gray-700">
+                            Está a punto de quitar del proyecto:
+                        </p>
+                    </div>
+                </div>
+
+                {removalWarning.sensors.length > 0 && (
+                    <div className="mb-2">
+                        <p className="text-xs font-semibold text-gray-600 mb-1">Sensores:</p>
+                        <ul className="list-disc list-inside text-sm text-gray-800 ml-2 space-y-0.5">
+                            {removalWarning.sensors.map((n) => <li key={n}>{n}</li>)}
+                        </ul>
+                    </div>
+                )}
+                {removalWarning.actuators.length > 0 && (
+                    <div className="mb-2">
+                        <p className="text-xs font-semibold text-gray-600 mb-1">Actuadores:</p>
+                        <ul className="list-disc list-inside text-sm text-gray-800 ml-2 space-y-0.5">
+                            {removalWarning.actuators.map((n) => <li key={n}>{n}</li>)}
+                        </ul>
+                    </div>
+                )}
+
+                <p className="text-sm text-gray-700 mt-3 mb-1">
+                    Esto eliminará de manera <strong>permanente e irreversible</strong> todas las mediciones asociadas.
+                </p>
+                <p className="text-sm text-yellow-700 bg-yellow-50 border border-yellow-200 rounded px-3 py-2 mt-2">
+                    Se recomienda descargar una copia en CSV antes de continuar.
+                </p>
+
+                <div className="flex items-center justify-end gap-3 mt-6">
+                    <button
+                        type="button"
+                        onClick={handleCancelRemoval}
+                        className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                        Cancelar
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleConfirmRemoval}
+                        className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+                    >
+                        Sí, eliminar y guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+
+    if (!asModal) return (
+        <>
+            {formMarkup}
+            {removalWarningModal}
+        </>
+    );
     if (!open) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
-            <div className="absolute inset-0 bg-black/40" onClick={(onRequestClose ?? onCancel)} aria-hidden="true" />
-            <div 
-                ref={panelRef} 
-                tabIndex={-1} 
-                className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl bg-white p-4 md:p-6 shadow-xl outline-none"
-            >
-                {formMarkup}
+        <>
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+                <div className="absolute inset-0 bg-black/40" onClick={(onRequestClose ?? onCancel)} aria-hidden="true" />
+                <div
+                    ref={panelRef}
+                    tabIndex={-1}
+                    className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl bg-white p-4 md:p-6 shadow-xl outline-none"
+                >
+                    {formMarkup}
+                </div>
             </div>
-        </div>
+            {removalWarningModal}
+        </>
     );
 }

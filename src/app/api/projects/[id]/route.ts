@@ -217,20 +217,40 @@ export async function PATCH(
       }
 
       if (sensorIds !== undefined) {
-        await tx.proyectoSensor.deleteMany({ where: { proyectoId: projectId } });
-        if (sensorIds.length) {
+        const currentSensors = await tx.proyectoSensor.findMany({
+          where: { proyectoId: projectId },
+          select: { id: true, sensorId: true },
+        });
+        const currentSensorIds = new Set(currentSensors.map((l) => l.sensorId));
+        const newSensorIds = new Set(sensorIds as number[]);
+        const sensorsToRemove = currentSensors.filter((l) => !newSensorIds.has(l.sensorId)).map((l) => l.id);
+        const sensorsToAdd = (sensorIds as number[]).filter((id) => !currentSensorIds.has(id));
+        if (sensorsToRemove.length) {
+          await tx.proyectoSensor.deleteMany({ where: { id: { in: sensorsToRemove } } });
+        }
+        if (sensorsToAdd.length) {
           await tx.proyectoSensor.createMany({
-            data: sensorIds.map((sid: number) => ({ proyectoId: projectId, sensorId: sid })),
+            data: sensorsToAdd.map((sid: number) => ({ proyectoId: projectId, sensorId: sid })),
             skipDuplicates: true,
           });
         }
       }
 
       if (actuatorIds !== undefined) {
-        await tx.proyectoActuador.deleteMany({ where: { proyectoId: projectId } });
-        if (actuatorIds.length) {
+        const currentActuators = await tx.proyectoActuador.findMany({
+          where: { proyectoId: projectId },
+          select: { id: true, actuadorId: true },
+        });
+        const currentActuatorIds = new Set(currentActuators.map((l) => l.actuadorId));
+        const newActuatorIds = new Set(actuatorIds as number[]);
+        const actuatorsToRemove = currentActuators.filter((l) => !newActuatorIds.has(l.actuadorId)).map((l) => l.id);
+        const actuatorsToAdd = (actuatorIds as number[]).filter((id) => !currentActuatorIds.has(id));
+        if (actuatorsToRemove.length) {
+          await tx.proyectoActuador.deleteMany({ where: { id: { in: actuatorsToRemove } } });
+        }
+        if (actuatorsToAdd.length) {
           await tx.proyectoActuador.createMany({
-            data: actuatorIds.map((aid: number) => ({ proyectoId: projectId, actuadorId: aid })),
+            data: actuatorsToAdd.map((aid: number) => ({ proyectoId: projectId, actuadorId: aid })),
             skipDuplicates: true,
           });
         }
